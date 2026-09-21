@@ -1,0 +1,923 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=dc2">
+<link rel="shortcut icon" href="/static/favicon.svg?v=dc2">
+<title>Doner Club Kiosk</title>
+<style>
+:root{--o:#ff5a12;--ink:#111;--muted:#746d66;--bg:#f6f3ef;--line:#e7dfd8;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",Arial,sans-serif}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;height:100%;background:var(--bg);color:var(--ink)}body{overflow:hidden}button{font:inherit;border:0;cursor:pointer}
+#app{height:100%;display:flex;flex-direction:column}.top{height:72px;flex:0 0 72px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 20px;gap:10px;z-index:10}
+.brand{display:flex;align-items:center;gap:10px;font-size:23px;font-weight:1000}.mark{width:44px;height:44px;border-radius:13px;background:var(--o);color:#fff;display:grid;place-items:center;font-size:22px;font-weight:1000}.pointBadge{margin-left:4px;padding:8px 12px;border-radius:12px;background:#fff3ec;border:1px solid #ffd8c4;color:var(--o);font-size:13px;font-weight:1000;white-space:nowrap;user-select:none;-webkit-user-select:none;cursor:pointer;transition:background .18s ease,border-color .18s ease,transform .18s ease}.pointBadge:hover{background:#fff0e7;border-color:#ffc6aa;transform:translateY(-1px)}.pointBadge:active{transform:translateY(0) scale(.97)}.pointBadge.pushing{animation:pointPush .8s ease infinite}@keyframes pointPush{0%,100%{transform:scale(1);box-shadow:0 0 0 rgba(255,90,18,0)}50%{transform:scale(1.04);box-shadow:0 0 0 6px rgba(255,90,18,.08)}}.status{display:none!important}
+.langs{margin-left:auto;display:flex;background:#f1eeea;border-radius:12px;padding:3px}.langs button{padding:8px 10px;background:transparent;border-radius:9px;font-size:12px;font-weight:950;color:#777}.langs .on{background:#fff;color:var(--o);box-shadow:0 2px 8px #0001}
+.carthead{height:42px;background:#161616;color:#fff;border-radius:12px;padding:0 14px;font-weight:950}.cats{display:flex;gap:8px;padding:12px 20px 9px;overflow-x:auto;scrollbar-width:none}.cats::-webkit-scrollbar{display:none}.cat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 16px;font-weight:950;white-space:nowrap;transition:background .12s ease,border-color .12s ease,color .12s ease,transform .12s ease}.cat:active{transform:scale(.97)}.cat.on{background:var(--o);border-color:var(--o);color:#fff}
+.content{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 22px 112px;width:100%;max-width:none;margin:0;scroll-behavior:smooth;scrollbar-width:auto;scrollbar-color:#9c9c9c #f3f0ec}.content::-webkit-scrollbar{width:14px}.content::-webkit-scrollbar-track{background:#f3f0ec}.content::-webkit-scrollbar-thumb{background:#9c9c9c;border-radius:10px;border:3px solid #f3f0ec}.content::-webkit-scrollbar-thumb:hover{background:#7f7f7f}.content>.titleRow,.content>#setup,.content>#grid{width:100%;max-width:1040px;margin-left:auto;margin-right:auto}.titleRow{display:flex;align-items:flex-end;justify-content:space-between;margin:4px 0 14px}.titleRow h1{font-size:30px;margin:0}.hint{font-size:12px;font-weight:850;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px 26px}.menuAll{display:block}.menuSection{margin:0 0 34px;scroll-margin-top:12px}.menuSection h2{margin:0 0 14px;font-size:17px;letter-spacing:.04em;text-transform:uppercase}.card{background:#fff;border:1px solid transparent;border-radius:18px;overflow:visible;box-shadow:0 0 0 rgba(0,0,0,0);min-width:0;cursor:pointer!important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease,background .18s ease;padding:8px}.card:hover{transform:translateY(-4px);border-color:#e4ddd5;box-shadow:0 12px 28px rgba(0,0,0,.10);background:#fff}.card,.card *{cursor:pointer!important}.photo{height:auto;aspect-ratio:4/3;background:#91aa5a;overflow:hidden;position:relative;border-radius:16px}.photo img{width:100%;height:100%;object-fit:contain;object-position:center;display:block}.placeholder{width:100%;height:100%;display:grid;place-items:center;background:linear-gradient(135deg,#94a658,#b0c373);color:white;font-size:38px;font-weight:1000}
+.body{padding:10px 0 0;display:flex;flex-direction:column}.name{font-size:17px;font-weight:1000;line-height:1.12}.weight{font-size:11px;color:#777;font-weight:850}.desc{font-size:11px;color:var(--muted);line-height:1.35;margin-top:5px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;min-height:45px}.bottom{margin-top:auto;padding-top:10px;display:flex;align-items:center;justify-content:space-between;gap:8px}.price{font-size:15px;font-weight:1000;background:var(--o);color:#fff;padding:8px 11px;border-radius:10px;display:inline-flex;align-items:center;position:relative;overflow:visible;transition:background .2s ease,transform .2s ease,box-shadow .2s ease,filter .2s ease}.price::after{content:'';position:absolute;inset:-5px;border-radius:14px;border:2px solid rgba(255,90,18,0);transform:scale(.9);pointer-events:none;transition:border-color .2s ease,transform .35s ease,opacity .35s ease;opacity:0}.price:hover{background:#ff671f;transform:translateY(-2px) scale(1.045);box-shadow:0 8px 20px rgba(255,90,18,.26);filter:brightness(1.03)}.price:hover::after{border-color:rgba(255,90,18,.20);transform:scale(1);opacity:1;animation:addHintRing 1.25s ease-in-out infinite}.price:active{transform:translateY(0) scale(.98);box-shadow:0 3px 9px rgba(255,90,18,.20)}.price small{display:none}.add{width:44px;height:44px;border-radius:14px;background:var(--o);color:#fff;font-size:28px;font-weight:900;display:grid;place-items:center;line-height:1;position:relative;overflow:visible;transition:background .2s ease,transform .2s ease,box-shadow .2s ease,filter .2s ease}.add::after{content:'';position:absolute;inset:-5px;border-radius:18px;border:2px solid rgba(255,90,18,0);transform:scale(.88);pointer-events:none;transition:border-color .2s ease,transform .35s ease,opacity .35s ease;opacity:0}.add:hover{background:#ff671f;transform:translateY(-2px) scale(1.06);box-shadow:0 8px 20px rgba(255,90,18,.30);filter:brightness(1.03)}.add:hover::after{border-color:rgba(255,90,18,.22);transform:scale(1);opacity:1;animation:addHintRing 1.25s ease-in-out infinite}.add:active{transform:translateY(0) scale(.96);box-shadow:0 3px 9px rgba(255,90,18,.22)}.cardAction{display:flex;align-items:center;justify-content:flex-end;min-width:44px}.cardQty{height:44px;min-width:112px;border-radius:14px;background:#08ae82;color:#fff;display:grid;grid-template-columns:38px 1fr 38px;align-items:center;overflow:hidden;box-shadow:0 8px 18px rgba(8,174,130,.18)}.cardQty button{height:44px;background:#e9f8f3;color:#08a77d;font-size:22px;font-weight:1000;display:grid;place-items:center;transition:background .15s ease,color .15s ease,transform .15s ease}.cardQty button:first-child{border-right:1px solid rgba(8,174,130,.18)}.cardQty button:last-child{border-left:1px solid rgba(8,174,130,.18)}.cardQty button:hover{background:#d7f2e9;color:#078c69}.cardQty button:active{transform:scale(.9);background:#c9ecdf}.cardQty span{text-align:center;font-weight:1000;font-size:15px;background:#08ae82;color:#fff;height:44px;display:grid;place-items:center}.addedBadge{height:44px;min-width:92px;padding:0 13px;border-radius:14px;background:#08ae82;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:1000;box-shadow:0 8px 18px rgba(8,174,130,.18)}.addedPulse{animation:addedPulse .55s cubic-bezier(.2,.8,.2,1)}.orderbar.cartPulse{animation:cartPulse .55s ease}.carthead.cartPulse{animation:cartPulse .55s ease}@keyframes addHintRing{0%,100%{transform:scale(.96);opacity:.35}50%{transform:scale(1.12);opacity:.08}}@keyframes addedPulse{0%{transform:scale(1)}40%{transform:scale(1.025);filter:brightness(1.04)}100%{transform:scale(1)}}@keyframes cartPulse{0%{transform:scale(1)}40%{transform:scale(1.018)}100%{transform:scale(1)}}
+@keyframes modalBackdropIn{from{background:rgba(0,0,0,0)}to{background:rgba(0,0,0,.53)}}@keyframes modalCardIn{0%{opacity:0;transform:translateY(18px) scale(.975)}60%{opacity:1;transform:translateY(-2px) scale(1.003)}100%{opacity:1;transform:translateY(0) scale(1)}}@media(prefers-reduced-motion:reduce){.overlay,.modal{animation:none!important}}.empty{grid-column:1/-1;background:#fff;border:1px solid var(--line);border-radius:24px;padding:36px;text-align:center;color:#756e68}.empty b{display:block;color:#111;font-size:21px;margin-bottom:8px}
+.orderbar{position:fixed;left:16px;right:16px;bottom:14px;height:76px;background:#151515;color:#fff;border-radius:22px;display:flex;align-items:center;padding:10px 14px 10px 18px;gap:14px;box-shadow:0 18px 45px #0003;z-index:15}.sumwrap{min-width:155px}.count{font-size:11px;color:#aaa;font-weight:800}.sum{font-size:23px;font-weight:1000}.items{flex:1;color:#c8c8c8;font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.checkout{height:52px;border-radius:16px;padding:0 22px;background:var(--o);color:#fff;font-weight:1000}.checkout:disabled{opacity:.4}
+.overlay{position:fixed;inset:0;background:#0008;z-index:30;display:grid;place-items:center;padding:20px;animation:modalBackdropIn .18s ease-out both}.modal{width:min(760px,96vw);max-height:92vh;overflow:auto;background:#fff;border-radius:30px;padding:26px;transform-origin:center center;animation:modalCardIn .26s cubic-bezier(.22,.8,.22,1) both}.productModal{width:min(1080px,96vw);padding:0;overflow:hidden;display:grid;grid-template-columns:minmax(320px,48%) 1fr}.productHero{min-height:590px;background:#93a75b;display:flex;align-items:center;justify-content:center;overflow:hidden}.productHero img{width:100%;height:100%;min-height:590px;object-fit:contain;display:block}.productInfo{padding:28px 30px;max-height:92vh;overflow:auto}.productTop{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.productClose{width:38px;height:38px;border-radius:50%;background:#f3f0ec;color:#333;font-size:22px;line-height:1;flex:0 0 auto}.productMeta{font-size:12px;font-weight:900;color:#766f69;margin:4px 0 8px}.modal h2{font-size:30px;margin:0 0 8px}.lead{margin:0 0 18px;color:var(--muted);line-height:1.4}.section{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:#888;font-weight:950;margin:18px 0 8px}.opt{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:16px;padding:13px 14px;margin:8px 0}.opt input{width:22px;height:22px;accent-color:var(--o)}.optmain{flex:1}.optn{font-weight:950}.optnote{font-size:11px;color:#888;margin-top:2px}.tag{font-size:12px;font-weight:950;color:#333}.actions{display:flex;gap:12px;margin-top:20px}.secondary,.primary{height:54px;border-radius:16px;font-weight:1000}.secondary{flex:1;background:#f2efeb}.primary{flex:1.5;background:var(--o);color:#fff}.cartline{display:flex;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid #eee}.mods{font-size:11px;color:#777;margin-top:4px}.qty{display:inline-flex;align-items:center;border:1px solid #ddd;border-radius:11px;overflow:hidden;margin-top:8px}.qty button{width:34px;height:32px;background:#f4f1ed;font-weight:1000}.qty span{width:34px;text-align:center;font-weight:900}.cartModal{width:min(900px,96vw);max-height:90vh;padding:24px 26px 20px;position:relative}.cartModalHead{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding-right:48px}.cartSummary{font-size:13px;color:var(--muted);margin-top:5px}.cartGrandTotal{font-size:28px;font-weight:1000;white-space:nowrap}.cartClose{position:absolute;right:20px;top:18px;width:40px;height:40px;border-radius:50%;background:#f2efeb;color:#555;font-size:25px;display:grid;place-items:center;transition:.16s}.cartClose:hover{background:#e9e4df;transform:scale(1.05)}.cartItemsBox{margin-top:12px;border-top:1px solid #eee}.cartRichLine{display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:14px;align-items:start;padding:14px 0;border-bottom:1px solid #eee}.cartThumb{width:76px;height:76px;border-radius:14px;overflow:hidden;background:#91aa5a;display:grid;place-items:center}.cartThumb img{width:100%;height:100%;object-fit:cover}.cartThumbFallback{color:#fff;font-size:24px;font-weight:1000}.cartRichName{font-size:17px;font-weight:1000;line-height:1.15}.cartRichDesc{font-size:11px;color:#777;margin-top:4px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.cartRichMods{font-size:11px;color:#777;margin-top:5px}.cartRichBottom{display:flex;align-items:center;gap:12px;margin-top:9px}.cartLineTotal{font-size:18px;font-weight:1000;white-space:nowrap;padding-top:3px}.recommendWrap{margin-top:18px;padding-top:18px;border-top:1px solid #eee}.recommendTitle{font-size:22px;font-weight:1000;margin:0 0 4px}.recommendSub{font-size:12px;color:var(--muted);margin-bottom:12px}.recommendGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.recommendCard{position:relative;border:1px solid #e9e2db;border-radius:18px;overflow:hidden;background:#fff;cursor:pointer;transition:transform .17s ease,box-shadow .17s ease,border-color .17s ease}.recommendCard:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.08);border-color:#ddd3ca}.recommendPhoto{height:auto;aspect-ratio:4/3;background:#91aa5a;overflow:hidden}.recommendPhoto img{width:100%;height:100%;object-fit:contain;display:block}.recommendBody{padding:10px 11px 12px}.recommendPrice{font-size:16px;font-weight:1000;color:var(--o)}.recommendName{font-size:14px;font-weight:950;line-height:1.2;margin-top:4px}.recommendAdd{position:absolute;right:9px;top:9px;width:38px;height:38px;border-radius:12px;background:#e9f7ff;color:#2889b4;font-size:26px;font-weight:900;display:grid;place-items:center;box-shadow:0 5px 12px rgba(40,137,180,.15);transition:.16s}.recommendAdd:hover{transform:scale(1.06);background:#d9f1ff}.recommendBadge{position:absolute;left:9px;top:9px;border-radius:999px;background:#d9f1ff;color:#146b9a;font-size:10px;font-weight:900;padding:5px 8px}.cartFooter{position:sticky;bottom:-20px;z-index:8;background:#fff;border-top:1px solid #eee;padding:14px 0 20px;margin:16px 0 -20px;box-shadow:0 -14px 24px rgba(255,255,255,.96)}.cartFooter .actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(140px,.72fr) minmax(0,1.55fr);gap:12px;margin-top:0;align-items:stretch}.cartFooter .secondary,.cartFooter .primary,.cartFooter .testIikoBtn{width:100%;min-width:0;height:54px;flex:none}.testIikoBtn{border-radius:16px;padding:0 16px;background:#232323;color:#fff;font-weight:1000;white-space:nowrap;transition:background .16s ease,transform .16s ease}.testIikoBtn:hover{background:#333;transform:translateY(-1px)}.testIikoBtn:active{transform:translateY(0) scale(.98)}.testIikoPanel{margin-top:14px;border:1px solid #e7dfd8;background:#faf8f5;border-radius:18px;padding:15px}.testIikoNotice{font-size:12px;line-height:1.45;color:#6f665e;background:#fff5e9;border:1px solid #ffd9b5;border-radius:14px;padding:11px 12px;margin-bottom:12px}.testIikoGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.testIikoField label{display:block;font-size:11px;font-weight:900;color:#777;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}.testIikoField select{width:100%;height:46px;border:1px solid #ddd5ce;border-radius:13px;background:#fff;padding:0 12px;font:inherit}.testIikoStatus{margin-top:11px;font-size:12px;color:#6f665e}.testIikoSend{width:100%;height:54px;border-radius:16px;background:var(--o);color:#fff;font-weight:1000;margin-top:12px}.testIikoSend:disabled{opacity:.45}.testIikoPaid{width:100%;height:58px;border-radius:16px;background:#0a9f73;color:#fff;font-weight:1000;margin-top:10px;box-shadow:0 8px 18px rgba(10,159,115,.18);transition:transform .16s ease,filter .16s ease}.testIikoPaid:hover{filter:brightness(1.04);transform:translateY(-1px)}.testIikoPaid:active{transform:scale(.99)}.paidTestWarning{margin-top:10px;padding:10px 12px;border-radius:13px;background:#fff4e8;border:1px solid #ffd3a8;color:#82512f;font-size:11px;line-height:1.4}.testIikoBack{width:100%;height:46px;border-radius:14px;background:#f2efeb;font-weight:950;margin-top:9px}.testResult{border-radius:16px;padding:14px;margin-top:12px;font-size:13px;line-height:1.45}.testResult.ok{background:#edf8e9;color:#34752b;border:1px solid #cfe8c7}.testResult.bad{background:#fff0ec;color:#a9472e;border:1px solid #f3c7bb}.paygrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pay{padding:20px;border:1px solid var(--line);border-radius:20px;background:#fff;text-align:left}.pay b{display:block;font-size:19px;margin:8px 0}.pay span{font-size:12px;color:#777}.phoneModal{width:min(620px,94vw);padding:30px}.phoneGift{display:flex;align-items:center;gap:12px;background:#fff4ec;border:1px solid #ffd7c1;border-radius:18px;padding:14px 16px;margin:14px 0 18px;color:#7a3c1f;font-size:14px;font-weight:800;line-height:1.35}.phoneGiftIcon{width:46px;height:46px;border-radius:14px;background:var(--o);color:#fff;display:grid;place-items:center;font-size:24px;flex:0 0 auto}.phoneInputWrap{margin:12px 0 14px}.phoneInputLabel{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#888;font-weight:950;margin-bottom:7px}.phoneDisplay{height:64px;border:2px solid #e8e0d9;border-radius:18px;background:#faf8f5;display:flex;align-items:center;padding:0 18px;font-size:28px;font-weight:1000;letter-spacing:.02em}.phoneDisplay.active{border-color:var(--o);background:#fff}.phoneHint{font-size:12px;color:var(--muted);margin-top:7px;min-height:18px}.phoneHint.error{color:#b8432c;font-weight:850}.phoneKeypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}.phoneKey{height:60px;border-radius:16px;background:#f3efeb;color:#171717;font-size:24px;font-weight:1000;transition:transform .12s ease,background .12s ease}.phoneKey:hover{background:#ebe5df}.phoneKey:active{transform:scale(.96)}.phoneKey.delete{font-size:21px}.phoneActions{display:grid;grid-template-columns:1fr 1.35fr;gap:10px;margin-top:16px}.phoneSkip{height:54px;border-radius:16px;background:#f2efeb;color:#333;font-weight:1000}.phoneContinue{height:54px;border-radius:16px;background:var(--o);color:#fff;font-weight:1000}.phoneContinue:disabled{opacity:.45}.phoneBack{width:100%;height:46px;border-radius:14px;background:transparent;color:#777;font-weight:900;margin-top:8px}.success{width:78px;height:78px;border-radius:50%;margin:0 auto 14px;background:#e8f5e4;color:#4b9538;display:grid;place-items:center;font-size:44px;font-weight:1000}.center{text-align:center}.setup{background:#fff7e7;border:1px solid #f1d79d;border-radius:15px;padding:13px 15px;margin-bottom:14px;color:#6c5726;font-size:12px;line-height:1.45}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.status{display:none}.productModal{grid-template-columns:42% 58%}.productHero,.productHero img{min-height:520px}}@media(max-width:650px){.grid{grid-template-columns:1fr}.photo{height:210px}.items{display:none}.orderbar{left:8px;right:8px}.checkout{padding:0 14px}.productModal{display:block}.productHero,.productHero img{min-height:260px;max-height:300px}.productInfo{padding:22px}.cartModal{padding:20px 16px 16px}.cartModalHead{display:block;padding-right:42px}.cartGrandTotal{font-size:24px;margin-top:8px}.cartRichLine{grid-template-columns:62px minmax(0,1fr);gap:10px}.cartThumb{width:62px;height:62px}.cartLineTotal{grid-column:2}.recommendGrid{grid-template-columns:1fr 1fr}.recommendPhoto{height:auto;aspect-ratio:4/3}.recommendName{font-size:12px}.recommendPrice{font-size:14px}.testIikoGrid{grid-template-columns:1fr}.cartFooter{bottom:-16px;padding-bottom:16px;margin-bottom:-16px}.cartFooter .actions{grid-template-columns:1fr 1fr}.cartFooter .primary{grid-column:1/-1}.testIikoBtn{width:100%}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <div class="brand"><div class="mark">DC</div>DONER CLUB</div>
+    <div id="pointBadge" class="pointBadge" title="Удерживайте для обновления меню">Арай</div>
+    <div id="status" class="status" aria-hidden="true"></div>
+    <div class="langs"><button id="kzBtn">ҚАЗ</button><button id="ruBtn" class="on">РУС</button></div>
+    <button id="cartHead" class="carthead">Корзина · 0</button>
+  </div>
+  <div id="cats" class="cats"></div>
+  <div class="content">
+    <div class="titleRow"><h1 id="title">Все меню</h1></div>
+    <div id="setup"></div>
+    <div id="grid" class="grid"><div class="empty"><b>Загружаю меню…</b>Получаю категории, блюда, цены и фотографии из iiko.</div></div>
+  </div>
+  <div class="orderbar">
+    <div class="sumwrap"><div id="count" class="count">Корзина пуста</div><div id="sum" class="sum">0 ₸</div></div>
+    <div id="cartItems" class="items">Выберите блюда из меню</div>
+    <button id="checkout" class="checkout" disabled>Оформить заказ · 0 ₸</button>
+  </div>
+</div>
+<div id="modalRoot"></div>
+<script>
+var lang='ru', categories=[], products=[], activeCat=null, cart=[], selected=null, menuReady=false, retryTimer=null, customerPhone='';
+var CAT_KZ={'Комбо':'Комбо','Донер':'Донерлер','Донеры':'Донерлер','Бар':'Сусындар','Напитки':'Сусындар','Чаи':'Шай','Сладости':'Тәттілер','Дополнительное':'Қосымша','Дополнительно':'Қосымша','Батоны':'Батондар','Фри':'Фри','Стрипсы':'Стрипстер','Акции':'Науқандар'};
+var MENU_CACHE_KEY='donerclub-kiosk-arai-menu-v1', MENU_CACHE_TTL=10*60*1000;
+var CART_SESSION_KEY='donerclub-kiosk-arai-cart-v1';
+var navScrollLockUntil=0;
+function t(ru,kz){return lang==='ru'?ru:kz}
+function money(n){return Number(n||0).toLocaleString('ru-RU')+' ₸'}
+function categoryName(c){return lang==='ru'?c.name:(CAT_KZ[c.name]||c.name)}
+function productName(p){return p.name}
+function count(){return cart.reduce(function(s,x){return s+x.q},0)}
+function total(){return cart.reduce(function(s,x){return s+x.q*x.unitPrice},0)}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]})}
+
+function restoreCartSession(){
+  try{
+    var raw=sessionStorage.getItem(CART_SESSION_KEY);
+    if(!raw)return;
+    var saved=JSON.parse(raw);
+    if(!Array.isArray(saved))return;
+    cart=saved.filter(function(x){
+      return x&&Number(x.q)>0&&Number.isFinite(Number(x.unitPrice));
+    }).map(function(x){
+      x.q=Math.max(1,Math.floor(Number(x.q)||1));
+      x.unitPrice=Number(x.unitPrice)||0;
+      x.mods=Array.isArray(x.mods)?x.mods:[];
+      x.modifierIds=Array.isArray(x.modifierIds)?x.modifierIds:[];
+      x.modifierGroupIds=Array.isArray(x.modifierGroupIds)?x.modifierGroupIds:[];
+      return x;
+    });
+  }catch(e){}
+}
+function persistCartSession(){
+  try{
+    sessionStorage.setItem(CART_SESSION_KEY,JSON.stringify(cart));
+  }catch(e){}
+}
+function pushMenuNow(){
+  try{localStorage.removeItem(MENU_CACHE_KEY)}catch(e){}
+  var badge=document.getElementById('pointBadge');
+  if(badge){
+    badge.classList.add('pushing');
+    badge.textContent=t('Арай · обновление','Арай · жаңарту');
+  }
+  loadMenu(true).finally(function(){
+    if(badge){
+      badge.classList.remove('pushing');
+      badge.textContent='Арай';
+    }
+  });
+}
+function enableMenuPushGesture(){
+  var badge=document.getElementById('pointBadge');
+  if(!badge)return;
+
+  var timer=null;
+  var cancel=function(){
+    if(timer){clearTimeout(timer);timer=null;}
+  };
+
+  badge.addEventListener('pointerdown',function(event){
+    cancel();
+    timer=setTimeout(function(){
+      timer=null;
+      pushMenuNow();
+    },1100);
+  });
+  badge.addEventListener('pointerup',cancel);
+  badge.addEventListener('pointercancel',cancel);
+  badge.addEventListener('pointerleave',cancel);
+
+  // Desktop shortcut: double-click the location badge.
+  badge.addEventListener('dblclick',function(event){
+    event.preventDefault();
+    pushMenuNow();
+  });
+}
+function readMenuCache(){
+  try{
+    var raw=localStorage.getItem(MENU_CACHE_KEY);
+    if(!raw)return null;
+    var cached=JSON.parse(raw);
+    if(!cached||!cached.savedAt||!cached.data)return null;
+    return cached;
+  }catch(e){
+    return null;
+  }
+}
+function writeMenuCache(data){
+  try{
+    localStorage.setItem(MENU_CACHE_KEY,JSON.stringify({
+      savedAt:Date.now(),
+      data:data
+    }));
+  }catch(e){}
+}
+function applyMenuData(data){
+  categories=data.categories||[];
+  products=data.products||[];
+  activeCat='all';
+  menuReady=true;
+  var status=document.getElementById('status');
+  status.className='status ok';
+  status.textContent='Kiosk Арай · iiko · '+products.length+' поз.';
+  document.getElementById('setup').innerHTML='';
+  paint();
+}
+function scheduleMenuRefresh(delay){
+  if(retryTimer){clearTimeout(retryTimer);retryTimer=null;}
+  retryTimer=setTimeout(function(){loadMenu(true)},Math.max(1000,delay));
+}
+async function loadMenu(force){
+  var status=document.getElementById('status');
+  var cached=readMenuCache();
+
+  if(!force&&cached){
+    var age=Date.now()-cached.savedAt;
+    if(age<MENU_CACHE_TTL){
+      applyMenuData(cached.data);
+      scheduleMenuRefresh(MENU_CACHE_TTL-age);
+      return;
+    }
+  }
+
+  if(!products.length){
+    status.className='status';
+    status.textContent='Kiosk Арай · загружаю iiko…';
+  }else{
+    status.className='status ok';
+    status.textContent='Kiosk Арай · обновляю меню…';
+  }
+
+  try{
+    var r=await fetch('/kiosk-menu?point=Arai&menu='+encodeURIComponent('Kiosk Арай'),{cache:'no-store'});
+    var data=await r.json();
+    if(!r.ok||!data.success) throw data;
+
+    writeMenuCache(data);
+    applyMenuData(data);
+    scheduleMenuRefresh(MENU_CACHE_TTL);
+  }catch(e){
+    if(cached&&cached.data){
+      applyMenuData(cached.data);
+      status.className='status ok';
+      status.textContent='Kiosk Арай · сохранённое меню · '+products.length+' поз.';
+      scheduleMenuRefresh(60*1000);
+      return;
+    }
+
+    menuReady=false;
+    status.className='status err';
+    status.textContent='Kiosk Арай · не доступно через API';
+    var names=(e&&e.availableMenus||[]).map(function(x){return x.name}).filter(Boolean);
+    document.getElementById('setup').innerHTML='<div class="setup"><b>'+t('Меню создано, но iikoCloud пока его не отдаёт терминалу.','Мәзір жасалды, бірақ iikoCloud оны терминалға әлі бермейді.')+'</b><br>'+t('В iikoWeb для ресторана Арай нужно назначить внешнее меню «Kiosk Арай» и сделать его активным.','iikoWeb ішінде Арай мейрамханасына «Kiosk Арай» сыртқы мәзірін тағайындап, оны белсенді ету керек.')+(names.length?'<br><br>'+t('Сейчас API видит: ','API қазір көреді: ')+esc(names.join(', ')):'')+'</div>';
+    categories=[];products=[];paint();
+    scheduleMenuRefresh(7000);
+  }
+}
+
+function productQty(p){
+  return cart.reduce(function(sum,x){
+    return sum+(x.productId===p.id?x.q:0);
+  },0);
+}
+function cardActionHtml(p){
+  var q=productQty(p);
+  if(!q){
+    return '<button class="add" data-add-product="'+esc(p.id)+'" aria-label="'+t('Добавить в корзину','Себетке қосу')+'">+</button>';
+  }
+  return '<div class="cardQty" data-qty-product="'+esc(p.id)+'"><button data-card-minus="'+esc(p.id)+'" aria-label="'+t('Уменьшить','Азайту')+'">−</button><span>'+q+'</span><button data-card-plus="'+esc(p.id)+'" aria-label="'+t('Увеличить','Көбейту')+'">+</button></div>';
+}
+function productCard(p){
+  var pic=p.imageUrl?'<img src="'+esc(p.imageUrl)+'" alt="" loading="eager" decoding="async" onerror="this.parentNode.innerHTML=\'<div class=placeholder>DC</div>\'">':'<div class="placeholder">DC</div>';
+  var w=p.weightGrams?Math.round(p.weightGrams)+' г':'';
+  return '<article class="card" data-card-product="'+esc(p.id)+'"><div class="photo">'+pic+'</div><div class="body"><div class="name">'+esc(productName(p))+' <span class="weight">'+esc(w)+'</span></div><div class="desc">'+esc(p.description||'')+'</div><div class="bottom"><div class="price">'+money(p.price)+'</div><div class="cardAction" data-action-product="'+esc(p.id)+'">'+cardActionHtml(p)+'</div></div></div></article>';
+}
+function bindProductButtons(root){
+  var scope=root||document;
+  scope.querySelectorAll('[data-card-product]').forEach(function(card){
+    card.onclick=function(){
+      var product=products.find(function(p){return p.id===card.dataset.cardProduct});
+      if(product)handleProduct(product);
+    };
+  });
+  scope.querySelectorAll('[data-add-product]').forEach(function(b){
+    b.onclick=function(event){
+      event.stopPropagation();
+      var product=products.find(function(p){return p.id===b.dataset.addProduct});
+      if(product)handleProduct(product);
+    };
+  });
+  scope.querySelectorAll('[data-card-plus]').forEach(function(b){
+    b.onclick=function(event){
+      event.stopPropagation();
+      var product=products.find(function(p){return p.id===b.dataset.cardPlus});
+      if(product)increaseProductFromCard(product);
+    };
+  });
+  scope.querySelectorAll('[data-card-minus]').forEach(function(b){
+    b.onclick=function(event){
+      event.stopPropagation();
+      decreaseProductFromCard(b.dataset.cardMinus);
+    };
+  });
+}
+function refreshCardActions(){
+  document.querySelectorAll('[data-action-product]').forEach(function(box){
+    var product=products.find(function(p){return p.id===box.dataset.actionProduct});
+    if(product)box.innerHTML=cardActionHtml(product);
+  });
+  bindProductButtons(document);
+}
+function animateAdded(productId){
+  var card=document.querySelector('[data-card-product="'+CSS.escape(productId)+'"]');
+  if(card){
+    card.classList.remove('addedPulse');
+    void card.offsetWidth;
+    card.classList.add('addedPulse');
+    setTimeout(function(){card.classList.remove('addedPulse')},600);
+  }
+  var bar=document.querySelector('.orderbar');
+  var top=document.getElementById('cartHead');
+  [bar,top].forEach(function(el){
+    if(!el)return;
+    el.classList.remove('cartPulse');
+    void el.offsetWidth;
+    el.classList.add('cartPulse');
+    setTimeout(function(){el.classList.remove('cartPulse')},600);
+  });
+}
+function updateNavActive(){
+  document.querySelectorAll('#cats [data-cat]').forEach(function(b){
+    b.classList.toggle('on', b.dataset.cat===activeCat);
+  });
+}
+function scrollToCategory(categoryId){
+  var content=document.querySelector('.content');
+  if(!content)return;
+
+  // Highlight immediately and temporarily stop the scroll observer from
+  // switching the highlight back while the smooth scroll is still moving.
+  activeCat=categoryId;
+  navScrollLockUntil=Date.now()+700;
+  updateNavActive();
+
+  if(categoryId==='all'){
+    content.scrollTo({top:0,behavior:'smooth'});
+    setTimeout(syncActiveCategoryFromScroll,720);
+    return;
+  }
+
+  var section=document.querySelector('[data-menu-section="'+CSS.escape(categoryId)+'"]');
+  if(!section)return;
+  var contentRect=content.getBoundingClientRect();
+  var sectionRect=section.getBoundingClientRect();
+  var target=content.scrollTop+(sectionRect.top-contentRect.top)-8;
+  content.scrollTo({top:Math.max(0,target),behavior:'smooth'});
+  setTimeout(syncActiveCategoryFromScroll,720);
+}
+function syncActiveCategoryFromScroll(){
+  var content=document.querySelector('.content');
+  if(!content||!categories.length)return;
+  if(Date.now()<navScrollLockUntil)return;
+
+  if(content.scrollTop<70){
+    if(activeCat!=='all'){
+      activeCat='all';
+      updateNavActive();
+    }
+    return;
+  }
+
+  var contentTop=content.getBoundingClientRect().top;
+  var current=null;
+  categories.forEach(function(category){
+    var section=document.querySelector('[data-menu-section="'+CSS.escape(category.id)+'"]');
+    if(!section)return;
+    var top=section.getBoundingClientRect().top-contentTop;
+    if(top<=120) current=category.id;
+  });
+  if(current&&current!==activeCat){
+    activeCat=current;
+    updateNavActive();
+  }
+}
+function paint(){
+  document.documentElement.lang=lang==='ru'?'ru':'kk';
+  document.getElementById('ruBtn').classList.toggle('on',lang==='ru');
+  document.getElementById('kzBtn').classList.toggle('on',lang==='kz');
+
+  document.getElementById('title').textContent=t('Все меню','Барлық мәзір');
+
+  var cats=document.getElementById('cats');
+  var allButton='<button class="cat '+(activeCat==='all'?'on':'')+'" data-cat="all">'+t('Все меню','Барлық мәзір')+'</button>';
+  cats.innerHTML=allButton+categories.map(function(c){
+    return '<button class="cat '+(c.id===activeCat?'on':'')+'" data-cat="'+esc(c.id)+'">'+esc(categoryName(c))+'</button>';
+  }).join('');
+  cats.querySelectorAll('[data-cat]').forEach(function(b){
+    b.onclick=function(){
+      scrollToCategory(b.dataset.cat);
+    };
+  });
+
+  paintGrid();
+  var content=document.querySelector('.content');
+  if(content)content.onscroll=syncActiveCategoryFromScroll;
+  updateCart();
+}
+function paintGrid(){
+  var root=document.getElementById('grid');
+  root.className='menuAll';
+
+  var sections=categories.map(function(category){
+    var list=products.filter(function(p){return p.categoryId===category.id});
+    if(!list.length)return '';
+    return '<section class="menuSection" data-menu-section="'+esc(category.id)+'"><h2>'+esc(categoryName(category))+'</h2><div class="grid">'+list.map(productCard).join('')+'</div></section>';
+  }).join('');
+
+  root.innerHTML=sections||'<div class="empty"><b>'+t('Пока нет доступных блюд','Әзірге қолжетімді тағамдар жоқ')+'</b></div>';
+  bindProductButtons(root);
+}
+function hasProductModifiers(p){
+  return (p.modifierGroups||[]).some(function(g){return g.items&&g.items.length});
+}
+function handleProduct(p){
+  if(!p)return;
+  if(hasProductModifiers(p)){
+    openProduct(p);
+  }else{
+    addSimpleProduct(p);
+  }
+}
+function increaseProductFromCard(p){
+  var line=cart.find(function(x){return x.productId===p.id});
+  if(!line){
+    handleProduct(p);
+    return;
+  }
+  line.q++;
+  updateCart();
+  refreshCardActions();
+  animateAdded(p.id);
+}
+function decreaseProductFromCard(productId){
+  var index=-1;
+  for(var i=cart.length-1;i>=0;i--){
+    if(cart[i].productId===productId){index=i;break;}
+  }
+  if(index<0)return;
+  cart[index].q--;
+  if(cart[index].q<=0)cart.splice(index,1);
+  updateCart();
+  refreshCardActions();
+}
+function addSimpleProduct(p){
+  var key=p.id+'|';
+  var x=cart.find(function(z){return z.key===key});
+  if(x)x.q++;
+  else cart.push({
+    key:key,
+    productId:p.id,
+    itemId:p.itemId,
+    sizeId:p.sizeId,
+    name:p.name,
+    description:p.description||'',
+    imageUrl:p.imageUrl||'',
+    basePrice:p.price,
+    unitPrice:p.price,
+    q:1,
+    mods:[],
+    modifierIds:[]
+  });
+  updateCart();
+  refreshCardActions();
+  animateAdded(p.id);
+}
+function removeSimpleProduct(productId){
+  var key=productId+'|';
+  var x=cart.find(function(z){return z.key===key});
+  if(!x)return;
+  x.q--;
+  if(x.q<=0)cart=cart.filter(function(z){return z!==x});
+  updateCart();
+  refreshCardActions();
+}
+function enableBackdropClose(){
+  var overlay=document.querySelector('#modalRoot .overlay');
+  if(!overlay)return;
+  overlay.onclick=function(event){
+    if(event.target===overlay)closeModal();
+  };
+}
+function openProduct(p){
+  selected=p;
+  var groups=(p.modifierGroups||[]).filter(function(g){return g.items&&g.items.length});
+  var body='';
+  groups.forEach(function(g,gi){
+    body+='<div class="section">'+esc(g.name||t('Добавки','Қоспалар'))+'</div>';
+    g.items.forEach(function(m){
+      var type=Number(g.maxQuantity)===1?'radio':'checkbox';
+      var nm='g'+gi;
+      var checked=Number(m.byDefault||0)>0?' checked':'';
+      body+='<label class="opt"><input class="modInput" type="'+type+'" name="'+nm+'" data-mid="'+esc(m.id)+'" data-groupid="'+esc(g.id||'')+'" data-name="'+esc(m.name)+'" data-price="'+Number(m.price||0)+'"'+checked+'><div class="optmain"><div class="optn">'+esc(m.name)+'</div></div><div class="tag">'+(Number(m.price||0)>0?'+'+money(m.price):t('без доплаты','тегін'))+'</div></label>';
+    });
+  });
+  var image=p.imageUrl
+    ? '<img src="'+esc(p.imageUrl)+'" alt="'+esc(p.name)+'" onerror="this.parentNode.innerHTML=\'<div class=placeholder>DC</div>\'">'
+    : '<div class="placeholder">DC</div>';
+  var weight=p.weightGrams?Math.round(p.weightGrams)+' г':'';
+  document.getElementById('modalRoot').innerHTML=
+    '<div class="overlay"><div class="modal productModal">'+
+      '<div class="productHero">'+image+'</div>'+
+      '<div class="productInfo">'+
+        '<div class="productTop"><div><h2>'+esc(p.name)+'</h2><div class="productMeta">'+esc(weight)+'</div></div><button class="productClose" id="closeProductTop" aria-label="'+t('Закрыть','Жабу')+'">×</button></div>'+
+        '<p class="lead">'+esc(p.description||'')+'</p>'+
+        body+
+        '<div class="actions"><button class="secondary" id="closeModal">'+t('Назад','Артқа')+'</button><button class="primary" id="confirmProduct">'+t('Добавить','Қосу')+' · '+money(p.price)+'</button></div>'+
+      '</div>'+
+    '</div></div>';
+  enableBackdropClose();
+  document.getElementById('closeModal').onclick=closeModal;
+  document.getElementById('closeProductTop').onclick=closeModal;
+  document.querySelectorAll('.modInput').forEach(function(i){i.onchange=updateProductButton});
+  updateProductButton();
+  document.getElementById('confirmProduct').onclick=confirmProduct;
+}
+function updateProductButton(){
+  var extra=0;document.querySelectorAll('.modInput:checked').forEach(function(i){extra+=Number(i.dataset.price||0)});
+  document.getElementById('confirmProduct').textContent=t('Добавить','Қосу')+' · '+money(selected.price+extra);
+}
+function confirmProduct(){
+  var productId=selected.id;
+  var mods=[],extra=0,modIds=[],modGroupIds=[];
+  document.querySelectorAll('.modInput:checked').forEach(function(i){
+    mods.push(i.dataset.name);
+    modIds.push(i.dataset.mid);
+    modGroupIds.push(i.dataset.groupid||'');
+    extra+=Number(i.dataset.price||0);
+  });
+  var key=selected.id+'|'+modIds.slice().sort().join(',');
+  var x=cart.find(function(z){return z.key===key});
+  if(x)x.q++;else cart.push({key:key,productId:selected.id,itemId:selected.itemId,sizeId:selected.sizeId,name:selected.name,description:selected.description||'',imageUrl:selected.imageUrl||'',basePrice:selected.price,unitPrice:selected.price+extra,q:1,mods:mods,modifierIds:modIds,modifierGroupIds:modGroupIds});
+  closeModal();
+  updateCart();
+  refreshCardActions();
+  animateAdded(productId);
+}
+function closeModal(){document.getElementById('modalRoot').innerHTML=''}
+function updateCart(){
+  persistCartSession();
+  var n=count(),s=total();
+  document.getElementById('cartHead').textContent=t('Корзина','Себет')+' · '+n;
+  document.getElementById('count').textContent=n?n+' '+t('поз.','поз.'):t('Корзина пуста','Себет бос');
+  document.getElementById('sum').textContent=money(s);
+  document.getElementById('cartItems').textContent=n?cart.slice(0,3).map(function(x){return x.name+' ×'+x.q}).join(' · '):t('Выберите блюда из меню','Мәзірден тағам таңдаңыз');
+  var b=document.getElementById('checkout');b.disabled=!n;b.textContent=t('Оформить заказ','Тапсырысты рәсімдеу')+' · '+money(s);
+}
+function cartProductIds(){
+  var ids={};
+  cart.forEach(function(x){if(x.productId)ids[x.productId]=true});
+  return ids;
+}
+function recommendedProducts(){
+  var inCart=cartProductIds();
+  var preferredNames=['Дополнительное','Дополнительно','Бар','Напитки','Чаи','Сладости','Фри','Стрипсы'];
+  var preferredIds={};
+  categories.forEach(function(category){
+    if(preferredNames.indexOf(category.name)>=0)preferredIds[category.id]=true;
+  });
+
+  var pool=products.filter(function(p){
+    return !inCart[p.id]&&preferredIds[p.categoryId];
+  });
+
+  if(pool.length<9){
+    products.forEach(function(p){
+      if(!inCart[p.id]&&pool.indexOf(p)<0)pool.push(p);
+    });
+  }
+
+  function priority(p){
+    var name=(p.name||'').toLowerCase().replace(/ё/g,'е');
+    var category=(categories.find(function(c){return c.id===p.categoryId})||{}).name||'';
+    category=category.toLowerCase().replace(/ё/g,'е');
+
+    if(name.indexOf('стрип')>=0)return 0;
+    if(name.indexOf('картофель фри')>=0 || name==='фри' || name.indexOf(' фри')>=0)return 1;
+    if(name.indexOf('медов')>=0 && name.indexOf('соус')>=0)return 2;
+    if(name.indexOf('фирмен')>=0 && name.indexOf('соус')>=0)return 3;
+
+    // After the four main popular add-ons:
+    // donut -> Chef Bubble -> teas -> garlic sauce.
+    if(name.indexOf('пончик')>=0)return 4;
+    if(name.indexOf('шеф bubble')>=0 || name.indexOf('chef bubble')>=0 || name.indexOf('bubble')>=0)return 5;
+    if(category.indexOf('чай')>=0 || name.indexOf('чай')>=0 || name.indexOf('lipton')>=0)return 6;
+    if(name.indexOf('чесноч')>=0 && name.indexOf('соус')>=0)return 7;
+
+    if(name.indexOf('соус')>=0)return 8;
+    if(name.indexOf('pepsi')>=0 || name.indexOf('айран')>=0 || name.indexOf('mirinda')>=0 || name.indexOf('вода')>=0 || name.indexOf('пиала')>=0 || name.indexOf('ava')>=0 || name.indexOf('да да')>=0 || name.indexOf('кинза')>=0)return 9;
+    if(name.indexOf('десерт')>=0 || name.indexOf('слад')>=0)return 10;
+    return 11;
+  }
+
+  pool.sort(function(a,b){
+    var pa=priority(a),pb=priority(b);
+    if(pa!==pb)return pa-pb;
+    return Number(a.price||0)-Number(b.price||0);
+  });
+
+  return pool;
+}
+function cartThumbHtml(x){
+  if(x.imageUrl){
+    return '<img src="'+esc(x.imageUrl)+'" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><div class="cartThumbFallback" style="display:none">DC</div>';
+  }
+  return '<div class="cartThumbFallback">DC</div>';
+}
+function recommendCardHtml(p,index){
+  var image=p.imageUrl
+    ? '<img src="'+esc(p.imageUrl)+'" alt="" onerror="this.style.display=\'none\'">'
+    : '';
+  var badge=index<4?'<div class="recommendBadge">'+t('Популярное','Танымал')+'</div>':'';
+  return '<article class="recommendCard" data-rec-card="'+esc(p.id)+'">'+
+    '<div class="recommendPhoto">'+image+'</div>'+
+    badge+
+    '<button class="recommendAdd" data-rec-add="'+esc(p.id)+'" aria-label="'+t('Добавить','Қосу')+'">+</button>'+
+    '<div class="recommendBody"><div class="recommendPrice">'+money(p.price)+'</div><div class="recommendName">'+esc(p.name)+'</div></div>'+
+  '</article>';
+}
+function openCart(){
+  if(!cart.length)return;
+  document.getElementById('modalRoot').innerHTML=
+    '<div class="overlay"><div class="modal cartModal">'+
+      '<button class="cartClose" id="cartClose">×</button>'+
+      '<div class="cartModalHead"><div><h2>'+t('Ваш заказ','Сіздің тапсырысыңыз')+'</h2><div class="cartSummary">'+t('Проверьте выбранные блюда перед оплатой','Төлемге дейін таңдалған тағамдарды тексеріңіз')+'</div></div><div class="cartGrandTotal">'+money(total())+'</div></div>'+
+      '<div id="cartLines" class="cartItemsBox"></div>'+
+      '<div id="recommendWrap" class="recommendWrap"></div>'+
+      '<div class="cartFooter"><div class="actions"><button class="secondary" id="closeModal">'+t('Продолжить выбор','Таңдауды жалғастыру')+'</button><button class="testIikoBtn" id="testIikoBtn">'+t('Тест в iiko','iiko тесті')+'</button><button class="primary" id="goPay">'+t('Оплатить','Төлеу')+' · '+money(total())+'</button></div></div>'+
+    '</div></div>';
+  enableBackdropClose();
+  paintCartLines();
+  document.getElementById('closeModal').onclick=closeModal;
+  document.getElementById('cartClose').onclick=closeModal;
+  document.getElementById('testIikoBtn').onclick=openTestIiko;
+  document.getElementById('goPay').onclick=openPhoneEntry;
+}
+function paintCartLines(){
+  var el=document.getElementById('cartLines');if(!el)return;
+  el.innerHTML=cart.map(function(x,i){
+    var details=x.mods&&x.mods.length
+      ? '<div class="cartRichMods">'+esc(x.mods.join(' · '))+'</div>'
+      : (x.description?'<div class="cartRichDesc">'+esc(x.description)+'</div>':'');
+    return '<div class="cartRichLine">'+
+      '<div class="cartThumb">'+cartThumbHtml(x)+'</div>'+
+      '<div><div class="cartRichName">'+esc(x.name)+'</div>'+details+
+        '<div class="cartRichBottom"><div class="qty"><button data-minus="'+i+'">−</button><span>'+x.q+'</span><button data-plus="'+i+'">+</button></div></div>'+
+      '</div>'+
+      '<div class="cartLineTotal">'+money(x.unitPrice*x.q)+'</div>'+
+    '</div>';
+  }).join('');
+
+  var recommend=document.getElementById('recommendWrap');
+  var recs=recommendedProducts();
+  recommend.innerHTML=recs.length
+    ? '<div class="recommendTitle">'+t('Рекомендовано для вас','Сізге ұсынылады')+'</div>'+
+      '<div class="recommendSub">'+t('Можно сразу дозаказать напиток, фри, стрипсы, десерт или дополнение.','Сусын, фри, стрипс, десерт немесе қоспаны бірден қоса аласыз.')+'</div>'+
+      '<div class="recommendGrid">'+recs.map(function(p,index){return recommendCardHtml(p,index)}).join('')+'</div>'
+    : '';
+
+  el.querySelectorAll('[data-plus]').forEach(function(b){b.onclick=function(){
+    cart[+b.dataset.plus].q++;
+    paintCartLines();updateCart();refreshCardActions();
+    document.getElementById('goPay').textContent=t('Оплатить','Төлеу')+' · '+money(total());
+    var totalEl=document.querySelector('.cartGrandTotal');if(totalEl)totalEl.textContent=money(total());
+  }});
+  el.querySelectorAll('[data-minus]').forEach(function(b){b.onclick=function(){
+    var i=+b.dataset.minus;cart[i].q--;
+    if(cart[i].q<=0)cart.splice(i,1);
+    if(!cart.length){closeModal();updateCart();refreshCardActions();return}
+    paintCartLines();updateCart();refreshCardActions();
+    document.getElementById('goPay').textContent=t('Оплатить','Төлеу')+' · '+money(total());
+    var totalEl=document.querySelector('.cartGrandTotal');if(totalEl)totalEl.textContent=money(total());
+  }});
+
+  recommend.querySelectorAll('[data-rec-card]').forEach(function(card){
+    card.onclick=function(event){
+      if(event.target.closest('[data-rec-add]'))return;
+      var product=products.find(function(p){return p.id===card.dataset.recCard});
+      if(product)handleProduct(product);
+    };
+  });
+  recommend.querySelectorAll('[data-rec-add]').forEach(function(button){
+    button.onclick=function(event){
+      event.stopPropagation();
+      var product=products.find(function(p){return p.id===button.dataset.recAdd});
+      if(!product)return;
+      if(hasProductModifiers(product)){
+        openProduct(product);
+      }else{
+        addSimpleProduct(product);
+        openCart();
+      }
+    };
+  });
+}
+function testOrderItemsPayload(){
+  return cart.map(function(x){
+    var modifiers=(x.modifierIds||[]).map(function(id,index){
+      var modifier={productId:id,amount:1};
+      var groupId=(x.modifierGroupIds||[])[index];
+      if(groupId)modifier.productGroupId=groupId;
+      return modifier;
+    });
+    var item={
+      productId:x.itemId,
+      amount:x.q
+    };
+    if(x.sizeId)item.productSizeId=x.sizeId;
+    if(modifiers.length)item.modifiers=modifiers;
+    return item;
+  }).filter(function(x){return x.productId&&x.amount>0});
+}
+function openTestIiko(){
+  if(!cart.length)return;
+  document.getElementById('modalRoot').innerHTML=
+    '<div class="overlay"><div class="modal">'+
+      '<h2>'+t('Тестовый заказ в iiko','iiko-ға тест тапсырыс')+'</h2>'+
+      '<div class="testIikoNotice">'+t('На этом экране ничего не отправляется автоматически. Оплаченный тестовый заказ уйдёт в iiko только после нажатия зелёной кнопки и двух подтверждений.','Бұл экранда ештеңе автоматты түрде жіберілмейді. Төленген тест тапсырыс тек жасыл батырманы басып, екі рет растағаннан кейін iiko-ға жіберіледі.')+'</div>'+
+      '<div class="testIikoPanel" id="testIikoPanel"><div class="testIikoStatus" id="testIikoStatus">'+t('Получаю кассы и столы Арай из iiko…','Арай кассалары мен үстелдерін iiko-дан алып жатырмын…')+'</div></div>'+
+      '<button class="testIikoBack" id="testIikoBack">'+t('Назад в корзину','Себетке қайту')+'</button>'+
+    '</div></div>';
+  enableBackdropClose();
+  document.getElementById('testIikoBack').onclick=openCart;
+  loadTestIikoConfig();
+}
+async function loadTestIikoConfig(){
+  var panel=document.getElementById('testIikoPanel');
+  if(!panel)return;
+  try{
+    var response=await fetch('/kiosk-iiko-config?point=Arai',{cache:'no-store'});
+    var data=await response.json();
+    if(!response.ok||!data.success)throw data;
+
+    var groups=data.terminalGroups||[];
+    var tables=data.tables||[];
+    if(!groups.length||!tables.length){
+      panel.innerHTML='<div class="testResult bad">'+t('iiko не вернул доступную кассовую группу или стол. Заказ не отправлялся.','iiko қолжетімді касса тобын немесе үстелді қайтармады. Тапсырыс жіберілген жоқ.')+'</div>';
+      return;
+    }
+
+    panel.innerHTML=
+      '<div class="testIikoGrid">'+
+        '<div class="testIikoField"><label>'+t('Касса / terminal group','Касса / terminal group')+'</label><select id="testTerminal">'+groups.map(function(g){return '<option value="'+esc(g.id)+'">'+esc(g.name)+(g.isAlive===false?' · OFFLINE':g.isAlive===true?' · online':'')+'</option>'}).join('')+'</select></div>'+
+        '<div class="testIikoField"><label>'+t('Стол','Үстел')+'</label><select id="testTable"></select></div>'+
+      '</div>'+
+      '<div class="testIikoStatus" id="testConfigInfo"></div>'+
+      '<div class="paidTestWarning">'+t('Тест будет записан в iiko как внешне оплаченная продажа типом оплаты Kiosk. Для безопасности тест ограничен суммой до 5 000 ₸.','Тест iiko-да Kiosk төлем түрімен сырттан төленген сату ретінде жазылады. Қауіпсіздік үшін тест сомасы 5 000 ₸-ге дейін шектелген.')+'</div>'+
+      '<button class="testIikoPaid" id="sendPaidTestIiko">'+t('Отправить ОПЛАЧЕННЫЙ тест · '+money(total()),'ТӨЛЕНГЕН тест жіберу · '+money(total()))+'</button>'+
+      '<div id="testOrderResult"></div>';
+
+    var terminal=document.getElementById('testTerminal');
+    var table=document.getElementById('testTable');
+    function fillTables(){
+      var groupId=terminal.value;
+      var filtered=tables.filter(function(x){return String(x.terminalGroupId)===String(groupId)});
+      table.innerHTML=filtered.map(function(x){
+        var label=(x.sectionName?x.sectionName+' · ':'')+(x.name||('Стол '+(x.number==null?'':x.number)));
+        return '<option value="'+esc(x.id)+'">'+esc(label)+'</option>';
+      }).join('');
+      document.getElementById('sendPaidTestIiko').disabled=!filtered.length||total()>5000;
+      document.getElementById('testConfigInfo').textContent=filtered.length
+        ? t('Найдено столов: ','Үстелдер саны: ')+filtered.length
+        : t('Для этой кассовой группы столы не найдены.','Бұл касса тобы үшін үстелдер табылмады.');
+    }
+    terminal.onchange=fillTables;
+    fillTables();
+    document.getElementById('sendPaidTestIiko').onclick=sendPaidTestIikoOrder;
+  }catch(error){
+    panel.innerHTML='<div class="testResult bad">'+t('Не удалось получить конфигурацию iiko. Ничего не отправлено.','iiko конфигурациясын алу мүмкін болмады. Ештеңе жіберілген жоқ.')+'<br><small>'+esc(error.message||error.details||error.code||'')+'</small></div>';
+  }
+}
+async function sendPaidTestIikoOrder(){
+  var terminal=document.getElementById('testTerminal');
+  var table=document.getElementById('testTable');
+  var button=document.getElementById('sendPaidTestIiko');
+  var result=document.getElementById('testOrderResult');
+  var paymentSum=total();
+  if(!terminal||!table||!terminal.value||!table.value)return;
+
+  if(paymentSum<=0||paymentSum>5000){
+    result.innerHTML='<div class="testResult bad">'+t('Для оплаченного теста сумма должна быть от 1 до 5 000 ₸.','Төленген тест сомасы 1-ден 5 000 ₸-ге дейін болуы керек.')+'</div>';
+    return;
+  }
+
+  var first=window.confirm(t(
+    'ВНИМАНИЕ: этот тест будет записан в iiko как ОПЛАЧЕННАЯ внешняя продажа на '+money(paymentSum)+'. Продолжить?',
+    'НАЗАР: бұл тест iiko-да '+money(paymentSum)+' сомасына ТӨЛЕНГЕН сыртқы сату ретінде жазылады. Жалғастыру керек пе?'
+  ));
+  if(!first)return;
+
+  var second=window.confirm(t(
+    'Последнее подтверждение: отправить оплаченный тест с типом оплаты Kiosk? После отправки проверь кассу, фискальный чек и кухонный принтер.',
+    'Соңғы растау: Kiosk төлем түрімен төленген тест жіберілсін бе? Жібергеннен кейін кассаны, фискалдық чекті және ас үй принтерін тексер.'
+  ));
+  if(!second)return;
+
+  button.disabled=true;
+  button.textContent=t('Отправляю оплаченный тест…','Төленген тест жіберілуде…');
+  result.innerHTML='';
+  try{
+    var response=await fetch('/kiosk-test-paid-order',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        confirm:'SEND_PAID_TEST_ORDER',
+        acknowledgeFinancialEffect:true,
+        point:'Arai',
+        terminalGroupId:terminal.value,
+        tableId:table.value,
+        paymentSum:paymentSum,
+        items:testOrderItemsPayload()
+      })
+    });
+    var data=await response.json();
+    if(!response.ok||!data.success)throw data;
+
+    var info=(data.iiko&&data.iiko.orderInfo)||{};
+    var commandState=(data.commandStatus&&data.commandStatus.state)||'';
+    var closeState=(data.close&&data.close.commandStatus&&data.close.commandStatus.state)||'';
+    var paid=(data.payment||{});
+    result.innerHTML='<div class="testResult ok"><b>'+t('ОПЛАЧЕННЫЙ тест отправлен и закрытие заказа запрошено.','ТӨЛЕНГЕН тест жіберілді және тапсырысты жабу сұралды.')+'</b><br>'+
+      t('Сумма оплаты: ','Төлем сомасы: ')+money(paid.sum||paymentSum)+
+      '<br>'+t('Тип оплаты: Kiosk / Card','Төлем түрі: Kiosk / Card')+
+      '<br>'+t('Создание заказа: ','Тапсырыс жасау: ')+esc(info.creationStatus||'—')+
+      (commandState?'<br>'+t('Создание в iikoFront: ','iikoFront-та жасау: ')+esc(commandState):'')+
+      '<br>'+t('Закрытие заказа: ','Тапсырысты жабу: ')+esc(closeState||t('запрошено','сұралды'))+
+      '<br>'+t('Сервисная печать: запрошена','Сервистік басып шығару: сұралды')+
+      (info.id?'<br>'+t('ID заказа: ','Тапсырыс ID: ')+esc(info.id):'')+
+      '<br><b>'+t('Проверь: исчез ли заказ из открытых, вышел ли фискальный чек и кухонный чек.','Тексер: тапсырыс ашықтардан жоғалды ма, фискалдық чек пен ас үй чегі шықты ма.')+'</b></div>';
+  }catch(error){
+    result.innerHTML='<div class="testResult bad"><b>'+t('Оплаченный тест НЕ отправлен.','Төленген тест ЖІБЕРІЛГЕН ЖОҚ.')+'</b><br>'+esc(error.message||error.details||error.code||'Неизвестная ошибка')+'</div>';
+  }finally{
+    button.disabled=false;
+    button.textContent=t('Отправить ОПЛАЧЕННЫЙ тест · '+money(total()),'ТӨЛЕНГЕН тест жіберу · '+money(total()));
+  }
+}
+function phoneDigitsOnly(value){
+  var digits=String(value||'').replace(/\D/g,'');
+  if(digits.charAt(0)==='8')digits='7'+digits.slice(1);
+  if(digits.charAt(0)==='7')digits=digits.slice(1);
+  return digits.slice(0,10);
+}
+function formattedPhone(){
+  var d=phoneDigitsOnly(customerPhone);
+  var out='+7';
+  if(d.length>0)out+=' ('+d.slice(0,3);
+  if(d.length>=3)out+=')';
+  if(d.length>3)out+=' '+d.slice(3,6);
+  if(d.length>6)out+=' '+d.slice(6,8);
+  if(d.length>8)out+=' '+d.slice(8,10);
+  return out;
+}
+function renderPhoneEntry(){
+  var display=document.getElementById('phoneDisplay');
+  var hint=document.getElementById('phoneHint');
+  var continueBtn=document.getElementById('phoneContinue');
+  if(!display||!hint||!continueBtn)return;
+  var digits=phoneDigitsOnly(customerPhone);
+  display.textContent=formattedPhone();
+  display.classList.toggle('active',digits.length>0);
+  continueBtn.disabled=digits.length!==10;
+  hint.className='phoneHint';
+  hint.textContent=digits.length===10
+    ? t('Номер готов. Скидка 5% будет привязана к этому номеру.','Нөмір дайын. 5% жеңілдік осы нөмірге тіркеледі.')
+    : t('Введите 10 цифр после +7','+7-ден кейін 10 сан енгізіңіз');
+}
+function openPhoneEntry(){
+  document.getElementById('modalRoot').innerHTML=
+    '<div class="overlay"><div class="modal phoneModal">'+
+      '<h2>'+t('Ваш номер телефона','Телефон нөміріңіз')+'</h2>'+
+      '<div class="phoneGift"><div class="phoneGiftIcon">₸</div><div>'+t('Введите номер телефона и получите <b>скидку 5%</b> на первый заказ через киоск.','Телефон нөміріңізді енгізіп, киоск арқылы алғашқы тапсырысқа <b>5% жеңілдік</b> алыңыз.')+'</div></div>'+
+      '<div class="phoneInputWrap"><div class="phoneInputLabel">'+t('Номер телефона','Телефон нөмірі')+'</div><div id="phoneDisplay" class="phoneDisplay">+7</div><div id="phoneHint" class="phoneHint"></div></div>'+
+      '<div class="phoneKeypad">'+
+        ['1','2','3','4','5','6','7','8','9','','0','⌫'].map(function(key){return key?'<button class="phoneKey'+(key==='⌫'?' delete':'')+'" data-phone-key="'+key+'">'+key+'</button>':'<div></div>'}).join('')+
+      '</div>'+
+      '<div class="phoneActions"><button id="phoneSkip" class="phoneSkip">'+t('Продолжить без номера телефона','Телефон нөмірінсіз жалғастыру')+'</button><button id="phoneContinue" class="phoneContinue">'+t('Продолжить','Жалғастыру')+'</button></div>'+
+      '<button id="phoneBack" class="phoneBack">'+t('Назад в корзину','Себетке қайту')+'</button>'+
+    '</div></div>';
+  enableBackdropClose();
+  renderPhoneEntry();
+
+  document.querySelectorAll('[data-phone-key]').forEach(function(button){
+    button.onclick=function(){
+      var key=button.dataset.phoneKey;
+      var digits=phoneDigitsOnly(customerPhone);
+      if(key==='⌫')digits=digits.slice(0,-1);
+      else if(digits.length<10)digits+=key;
+      customerPhone=digits;
+      renderPhoneEntry();
+    };
+  });
+
+  document.getElementById('phoneSkip').onclick=function(){
+    customerPhone='';
+    openPay();
+  };
+  document.getElementById('phoneContinue').onclick=function(){
+    var digits=phoneDigitsOnly(customerPhone);
+    if(digits.length!==10){
+      var hint=document.getElementById('phoneHint');
+      if(hint){
+        hint.className='phoneHint error';
+        hint.textContent=t('Проверьте номер телефона. Нужно 10 цифр после +7.','Телефон нөмірін тексеріңіз. +7-ден кейін 10 сан болуы керек.');
+      }
+      return;
+    }
+    customerPhone='+7'+digits;
+    openPay();
+  };
+  document.getElementById('phoneBack').onclick=openCart;
+}
+function openPay(){
+  var phoneNote=customerPhone
+    ? '<div class="setup" style="margin-bottom:14px">'+t('Бонусный номер: ','Бонустық нөмір: ')+'<b>'+esc(formattedPhone())+'</b></div>'
+    : '';
+  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal"><h2>'+t('Способ оплаты','Төлем тәсілі')+'</h2>'+phoneNote+'<div class="paygrid"><button class="pay payChoice"><div style="font-size:42px">💳</div><b>ForteBank</b><span>'+t('Банковская карта / Apple Pay','Банк картасы / Apple Pay')+'</span></button><button class="pay payChoice"><div style="font-size:42px">▦</div><b>'+t('Единый QR','Бірыңғай QR')+'</b><span>'+t('QR на сумму заказа','Тапсырыс сомасына QR')+'</span></button></div><div class="actions"><button class="secondary" id="backCart">'+t('Назад','Артқа')+'</button></div></div></div>';
+  enableBackdropClose();
+  document.getElementById('backCart').onclick=openPhoneEntry;
+  document.querySelectorAll('.payChoice').forEach(function(b){b.onclick=showSuccess});
+}
+function showSuccess(){
+  var no=Math.floor(100+Math.random()*900);
+  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal center"><div class="success">✓</div><h2>'+t('Заказ принят','Тапсырыс қабылданды')+'</h2><div style="font-size:42px;font-weight:1000;margin:14px">№ '+no+'</div><p class="lead">'+t('Оплата и отправка в iiko пока в тестовом режиме.','Төлем және iiko-ға жіберу әзірге тест режимінде.')+'</p><button class="primary" id="finish" style="width:100%">'+t('Готово','Дайын')+'</button></div></div>';
+  enableBackdropClose();
+  document.getElementById('finish').onclick=function(){cart=[];customerPhone='';closeModal();updateCart();refreshCardActions()};
+}
+function handlePushQuery(){
+  try{
+    var url=new URL(window.location.href);
+    if(url.searchParams.get('push')==='1'){
+      url.searchParams.delete('push');
+      history.replaceState(null,'',url.pathname+(url.searchParams.toString()?'?'+url.searchParams.toString():'')+url.hash);
+      setTimeout(pushMenuNow,50);
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+function enableGlobalMenuWheel(){
+  document.addEventListener('wheel',function(event){
+    if(event.ctrlKey)return;
+    if(document.querySelector('#modalRoot .overlay'))return;
+    var content=document.querySelector('.content');
+    if(!content)return;
+    if(Math.abs(event.deltaY)<=Math.abs(event.deltaX))return;
+
+    // Over the menu itself, leave the browser's original/native wheel speed untouched.
+    if(content.contains(event.target))return;
+
+    // Outside the menu (header, category bar, empty side areas), forward the same wheel delta.
+    event.preventDefault();
+    content.scrollTop+=event.deltaY;
+  },{passive:false});
+}
+enableGlobalMenuWheel();
+enableMenuPushGesture();
+var pushedOnOpen=handlePushQuery();
+document.getElementById('ruBtn').onclick=function(){lang='ru';paint()};
+document.getElementById('kzBtn').onclick=function(){lang='kz';paint()};
+document.getElementById('cartHead').onclick=openCart;
+document.getElementById('checkout').onclick=openCart;
+
+restoreCartSession();
+paint();if(!pushedOnOpen)loadMenu();
+</script>
+</body></html>
