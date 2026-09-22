@@ -1,3 +1,4 @@
+import math
 import os
 import threading
 import time
@@ -20,13 +21,17 @@ _kiosk_token_lock = threading.Lock()
 _departments_lock = threading.Lock()
 
 
+class ConfigurationError(RuntimeError):
+    pass
+
+
 def _cache_valid(cache):
     return cache.get("value") is not None and cache.get("expires_at", 0) > time.time()
 
 
 def _get_token(api_key, cache, lock, force_refresh=False):
     if not api_key:
-        raise RuntimeError("iikoCloud API key is not configured")
+        raise ConfigurationError("iikoCloud API key is not configured")
     if not force_refresh and _cache_valid(cache):
         return cache["value"]
 
@@ -37,7 +42,7 @@ def _get_token(api_key, cache, lock, force_refresh=False):
         app_id = os.environ.get("IIKO_KIOSK_APP_ID") or os.environ.get("IIKO_APP_ID")
         client_secret = os.environ.get("IIKO_KIOSK_CLIENT_SECRET") or os.environ.get("IIKO_CLIENT_SECRET")
         if not app_id or not client_secret:
-            raise RuntimeError("iikoCloud appId/clientSecret are not configured")
+            raise ConfigurationError("iikoCloud appId/clientSecret are not configured")
 
         response = requests.post(
             f"{IIKO_BASE_URL}/api/v2/access_token",
@@ -61,7 +66,7 @@ def get_iiko_read_token(force_refresh=False):
 def get_iiko_kiosk_token(force_refresh=False):
     api_key = os.environ.get("IIKO_KIOSK_API_KEY")
     if not api_key:
-        raise RuntimeError("Dedicated IIKO_KIOSK_API_KEY is not configured")
+        raise ConfigurationError("Dedicated IIKO_KIOSK_API_KEY is not configured")
     return _get_token(api_key, _kiosk_token_cache, _kiosk_token_lock, force_refresh)
 
 
@@ -126,6 +131,8 @@ def get_departments(force_refresh=False):
 
 def find_department(point):
     normalized = (point or "").strip().lower()
+    if not normalized:
+        return None, []
     departments = get_departments()
 
     for department in departments:
@@ -168,16 +175,13 @@ def get_external_menu_by_id(external_menu_id, organization_id):
 
 def _menu_price(prices, organization_id):
     prices = prices or []
-    for entry in prices:
-        if str(entry.get("organizationId")) == str(organization_id):
-            try:
-                return round(float(entry.get("price")), 2)
-            except (TypeError, ValueError):
-                pass
-    for entry in prices:
+    matching = [entry for entry in prices if str(entry.get("organizationId")) == str(organization_id)]
+    for entry in matching or prices:
         try:
-            return round(float(entry.get("price")), 2)
-        except (TypeError, ValueError):
+            price = float(entry.get("price"))
+            if not isinstance(entry.get("price"), bool) and math.isfinite(price) and price >= 0:
+                return round(price, 2)
+        except (TypeError, ValueError, OverflowError):
             continue
     return None
 
@@ -392,20 +396,24 @@ def get_restaurant_sections_for_terminal_groups(terminal_group_ids):
 
 
 def _normalize_order_items(incoming_items):
+    if not isinstance(incoming_items, list) or not incoming_items:
+        raise ValueError("items must be a non-empty array")
     order_items = []
 
     for source_item in incoming_items:
+        if not isinstance(source_item, dict):
+            raise ValueError("Each item must be an object")
         product_id = str(source_item.get("productId") or "").strip()
         if not product_id:
-            continue
+            raise ValueError("productId is required")
 
         try:
             amount = float(source_item.get("amount") or 0)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             amount = 0
 
-        if amount <= 0:
-            continue
+        if isinstance(source_item.get("amount"), bool) or not math.isfinite(amount) or amount <= 0:
+            raise ValueError("Item amount must be a finite positive number")
 
         order_item = {
             "productId": product_id,
@@ -418,14 +426,25 @@ def _normalize_order_items(incoming_items):
             order_item["productSizeId"] = str(product_size_id)
 
         modifiers = []
-        for modifier in source_item.get("modifiers") or []:
+        incoming_modifiers = source_item.get("modifiers", [])
+        if not isinstance(incoming_modifiers, list):
+            raise ValueError("modifiers must be an array")
+        for modifier in incoming_modifiers:
+            if not isinstance(modifier, dict):
+                raise ValueError("Each modifier must be an object")
             modifier_product_id = str(modifier.get("productId") or "").strip()
             if not modifier_product_id:
-                continue
+                raise ValueError("Modifier productId is required")
+            try:
+                modifier_amount = float(modifier.get("amount", 1))
+            except (TypeError, ValueError, OverflowError):
+                raise ValueError("Modifier amount must be a finite positive number") from None
+            if isinstance(modifier.get("amount"), bool) or not math.isfinite(modifier_amount) or modifier_amount <= 0:
+                raise ValueError("Modifier amount must be a finite positive number")
 
             modifier_payload = {
                 "productId": modifier_product_id,
-                "amount": float(modifier.get("amount") or 1),
+                "amount": modifier_amount,
             }
             product_group_id = modifier.get("productGroupId")
             if product_group_id:
@@ -588,6 +607,8 @@ def kiosk_menu():
         response.headers["Cache-Control"] = "no-store"
         return response
 
+    except ConfigurationError as error:
+        return jsonify(success=False, code="KIOSK_API_NOT_CONFIGURED", message=str(error)), 503
     except requests.Timeout:
         return jsonify({"success": False, "code": "IIKO_TIMEOUT", "message": "iiko did not answer in time."}), 504
     except requests.HTTPError as error:
@@ -647,6 +668,8 @@ def kiosk_iiko_config():
         response.headers["Cache-Control"] = "no-store"
         return response
 
+    except ConfigurationError as error:
+        return jsonify(success=False, code="KIOSK_API_NOT_CONFIGURED", message=str(error)), 503
     except requests.Timeout:
         return jsonify({"success": False, "code": "IIKO_TIMEOUT", "message": "iiko did not answer in time."}), 504
     except requests.HTTPError as error:
@@ -664,6 +687,8 @@ def kiosk_iiko_config():
 @app.route("/kiosk-test-order", methods=["POST"])
 def kiosk_test_order():
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(success=False, code="INVALID_TEST_ORDER", message="JSON object required."), 400
 
     if data.get("confirm") != "SEND_TEST_ORDER":
         return jsonify({
@@ -672,7 +697,7 @@ def kiosk_test_order():
             "message": "Test order was NOT sent. Explicit confirmation is required.",
         }), 400
 
-    point = (data.get("point") or "Arai").strip()
+    point = str(data.get("point") or "Arai").strip()
     terminal_group_id = str(data.get("terminalGroupId") or "").strip()
     table_id = str(data.get("tableId") or "").strip()
     incoming_items = data.get("items") or []
@@ -683,6 +708,11 @@ def kiosk_test_order():
             "code": "INVALID_TEST_ORDER",
             "message": "terminalGroupId, tableId and items are required.",
         }), 400
+
+    try:
+        order_items = _normalize_order_items(incoming_items)
+    except ValueError as error:
+        return jsonify(success=False, code="INVALID_TEST_ORDER", message=str(error)), 400
 
     try:
         if not os.environ.get("IIKO_KIOSK_API_KEY"):
@@ -697,14 +727,6 @@ def kiosk_test_order():
         )
         if error_payload:
             return jsonify(error_payload), status_code
-
-        order_items = _normalize_order_items(incoming_items)
-        if not order_items:
-            return jsonify({
-                "success": False,
-                "code": "NO_VALID_ITEMS",
-                "message": "No valid order items were supplied.",
-            }), 400
 
         organization_id = validated["organizationId"]
         payload = {
@@ -738,6 +760,14 @@ def kiosk_test_order():
             result.get("correlationId"),
             attempts=6,
         )
+        state = (command_status or {}).get("state")
+        if state != "Success":
+            return jsonify(
+                success=False,
+                code="TEST_ORDER_COMMAND_ERROR" if state == "Error" else "TEST_ORDER_PENDING",
+                message="Order submission was attempted. Check iiko before retrying.",
+                commandStatus=command_status, iiko=result,
+            ), 502 if state == "Error" else 202
 
         return jsonify({
             "success": True,
@@ -750,6 +780,8 @@ def kiosk_test_order():
             "iiko": result,
         })
 
+    except ConfigurationError as error:
+        return jsonify(success=False, code="KIOSK_API_NOT_CONFIGURED", message=str(error)), 503
     except requests.Timeout:
         return jsonify({"success": False, "code": "IIKO_TIMEOUT", "message": "iiko did not answer in time."}), 504
     except Exception as error:
@@ -759,6 +791,8 @@ def kiosk_test_order():
 @app.route("/kiosk-test-paid-order", methods=["POST"])
 def kiosk_test_paid_order():
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(success=False, code="INVALID_PAID_TEST_ORDER", message="JSON object required."), 400
 
     if (
         data.get("confirm") != "SEND_PAID_TEST_ORDER"
@@ -770,17 +804,17 @@ def kiosk_test_paid_order():
             "message": "Paid test order was NOT sent. Explicit financial confirmation is required.",
         }), 400
 
-    point = (data.get("point") or "Arai").strip()
+    point = str(data.get("point") or "Arai").strip()
     terminal_group_id = str(data.get("terminalGroupId") or "").strip()
     table_id = str(data.get("tableId") or "").strip()
     incoming_items = data.get("items") or []
 
     try:
         payment_sum = round(float(data.get("paymentSum") or 0), 2)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         payment_sum = 0
 
-    if payment_sum <= 0 or payment_sum > 5000:
+    if isinstance(data.get("paymentSum"), bool) or not math.isfinite(payment_sum) or payment_sum <= 0 or payment_sum > 5000:
         return jsonify({
             "success": False,
             "code": "PAID_TEST_SUM_OUT_OF_RANGE",
@@ -795,6 +829,11 @@ def kiosk_test_paid_order():
         }), 400
 
     try:
+        order_items = _normalize_order_items(incoming_items)
+    except ValueError as error:
+        return jsonify(success=False, code="INVALID_PAID_TEST_ORDER", message=str(error)), 400
+
+    try:
         if not os.environ.get("IIKO_KIOSK_API_KEY"):
             return jsonify({
                 "success": False,
@@ -807,14 +846,6 @@ def kiosk_test_paid_order():
         )
         if error_payload:
             return jsonify(error_payload), status_code
-
-        order_items = _normalize_order_items(incoming_items)
-        if not order_items:
-            return jsonify({
-                "success": False,
-                "code": "NO_VALID_ITEMS",
-                "message": "No valid order items were supplied.",
-            }), 400
 
         organization_id = validated["organizationId"]
         payment_type_id = os.environ.get(
@@ -882,6 +913,13 @@ def kiosk_test_paid_order():
                 "commandStatus": command_status,
             }), 502
 
+        if not command_status or command_status.get("state") != "Success":
+            return jsonify(
+                success=False, code="PAID_TEST_CREATE_PENDING",
+                message="Creation is not confirmed. Close was NOT requested. Check iiko before retrying.",
+                orderId=order_id, iiko=result, commandStatus=command_status,
+            ), 202
+
         close_response = iiko_kiosk_post(
             "/api/1/order/close",
             {"organizationId": organization_id, "orderId": order_id},
@@ -905,7 +943,7 @@ def kiosk_test_paid_order():
         )
 
         return jsonify({
-            "success": bool(not close_status or close_status.get("state") != "Error"),
+            "success": bool(close_status and close_status.get("state") == "Success"),
             "message": "Paid test order was created and close was requested in iiko.",
             "organizationId": organization_id,
             "terminalGroupId": terminal_group_id,
@@ -926,8 +964,11 @@ def kiosk_test_paid_order():
                 "response": close_result,
             },
             "iiko": result,
-        })
+        }), (200 if close_status and close_status.get("state") == "Success"
+             else 502 if close_status and close_status.get("state") == "Error" else 202)
 
+    except ConfigurationError as error:
+        return jsonify(success=False, code="KIOSK_API_NOT_CONFIGURED", message=str(error)), 503
     except requests.Timeout:
         return jsonify({"success": False, "code": "IIKO_TIMEOUT", "message": "iiko did not answer in time."}), 504
     except requests.HTTPError as error:

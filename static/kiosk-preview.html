@@ -66,7 +66,7 @@ function restoreCartSession(){
     var saved=JSON.parse(raw);
     if(!Array.isArray(saved))return;
     cart=saved.filter(function(x){
-      return x&&Number(x.q)>0&&Number.isFinite(Number(x.unitPrice));
+      return x&&x.productId&&Number.isFinite(Number(x.q))&&Number(x.q)>=1&&Number.isFinite(Number(x.unitPrice))&&Number(x.unitPrice)>=0;
     }).map(function(x){
       x.q=Math.max(1,Math.floor(Number(x.q)||1));
       x.unitPrice=Number(x.unitPrice)||0;
@@ -198,7 +198,7 @@ async function loadMenu(force){
     status.className='status err';
     status.textContent='Kiosk Арай · не доступно через API';
     var names=(e&&e.availableMenus||[]).map(function(x){return x.name}).filter(Boolean);
-    document.getElementById('setup').innerHTML='<div class="setup"><b>'+t('Меню создано, но iikoCloud пока его не отдаёт терминалу.','Мәзір жасалды, бірақ iikoCloud оны терминалға әлі бермейді.')+'</b><br>'+t('В iikoWeb для ресторана Арай нужно назначить внешнее меню «Kiosk Арай» и сделать его активным.','iikoWeb ішінде Арай мейрамханасына «Kiosk Арай» сыртқы мәзірін тағайындап, оны белсенді ету керек.')+(names.length?'<br><br>'+t('Сейчас API видит: ','API қазір көреді: ')+esc(names.join(', ')):'')+'</div>';
+    document.getElementById('setup').innerHTML='<div class="setup"><b>'+t('Не удалось загрузить меню. Повторяем подключение…','Мәзір жүктелмеді. Қайта қосылып жатырмыз…')+'</b><br>'+esc(e.message||e.code||t('Проверьте подключение к сети.','Желіге қосылуды тексеріңіз.'))+(names.length?'<br>'+t('Доступные меню: ','Қолжетімді мәзірлер: ')+esc(names.join(', ')):'')+'</div>';
     categories=[];products=[];paint();
     scheduleMenuRefresh(7000);
   }
@@ -444,7 +444,7 @@ function openProduct(p){
   groups.forEach(function(g,gi){
     body+='<div class="section">'+esc(g.name||t('Добавки','Қоспалар'))+'</div>';
     g.items.forEach(function(m){
-      var type=Number(g.maxQuantity)===1?'radio':'checkbox';
+      var type=Number(g.maxQuantity)===1&&Number(g.minQuantity)>0?'radio':'checkbox';
       var nm='g'+gi;
       var checked=Number(m.byDefault||0)>0?' checked':'';
       body+='<label class="opt"><input class="modInput" type="'+type+'" name="'+nm+'" data-mid="'+esc(m.id)+'" data-groupid="'+esc(g.id||'')+'" data-name="'+esc(m.name)+'" data-price="'+Number(m.price||0)+'"'+checked+'><div class="optmain"><div class="optn">'+esc(m.name)+'</div></div><div class="tag">'+(Number(m.price||0)>0?'+'+money(m.price):t('без доплаты','тегін'))+'</div></label>';
@@ -473,9 +473,21 @@ function openProduct(p){
 }
 function updateProductButton(){
   var extra=0;document.querySelectorAll('.modInput:checked').forEach(function(i){extra+=Number(i.dataset.price||0)});
-  document.getElementById('confirmProduct').textContent=t('Добавить','Қосу')+' · '+money(selected.price+extra);
+  var valid=true;
+  (selected.modifierGroups||[]).filter(function(g){return g.items&&g.items.length}).forEach(function(g,gi){
+    var inputs=Array.from(document.querySelectorAll('.modInput[name="g'+gi+'"]'));
+    var quantity=inputs.filter(function(i){return i.checked}).length;
+    var min=Number(g.minQuantity)||0,max=Number(g.maxQuantity)||0;
+    if(quantity<min||(max>0&&quantity>max))valid=false;
+    inputs.forEach(function(i){i.disabled=i.type!=='radio'&&!i.checked&&max>0&&quantity>=max});
+  });
+  var button=document.getElementById('confirmProduct');
+  button.disabled=!valid;
+  button.textContent=(valid?t('Добавить','Қосу'):t('Проверьте выбор добавок','Қоспаларды тексеріңіз'))+' · '+money(selected.price+extra);
 }
 function confirmProduct(){
+  updateProductButton();
+  if(document.getElementById('confirmProduct').disabled)return;
   var productId=selected.id;
   var mods=[],extra=0,modIds=[],modGroupIds=[];
   document.querySelectorAll('.modInput:checked').forEach(function(i){
@@ -633,7 +645,7 @@ function paintCartLines(){
     card.onclick=function(event){
       if(event.target.closest('[data-rec-add]'))return;
       var product=products.find(function(p){return p.id===card.dataset.recCard});
-      if(product)handleProduct(product);
+      if(product){handleProduct(product);if(!hasProductModifiers(product))openCart()}
     };
   });
   recommend.querySelectorAll('[data-rec-add]').forEach(function(button){
@@ -687,6 +699,8 @@ async function loadTestIikoConfig(){
     var response=await fetch('/kiosk-iiko-config?point=Arai',{cache:'no-store'});
     var data=await response.json();
     if(!response.ok||!data.success)throw data;
+
+    if(!panel.isConnected)return;
 
     var groups=data.terminalGroups||[];
     var tables=data.tables||[];
@@ -785,7 +799,7 @@ async function sendPaidTestIikoOrder(){
       (info.id?'<br>'+t('ID заказа: ','Тапсырыс ID: ')+esc(info.id):'')+
       '<br><b>'+t('Проверь: исчез ли заказ из открытых, вышел ли фискальный чек и кухонный чек.','Тексер: тапсырыс ашықтардан жоғалды ма, фискалдық чек пен ас үй чегі шықты ма.')+'</b></div>';
   }catch(error){
-    result.innerHTML='<div class="testResult bad"><b>'+t('Оплаченный тест НЕ отправлен.','Төленген тест ЖІБЕРІЛГЕН ЖОҚ.')+'</b><br>'+esc(error.message||error.details||error.code||'Неизвестная ошибка')+'</div>';
+    result.innerHTML='<div class="testResult bad"><b>'+t('Результат заказа не подтверждён. Проверьте iiko перед повторной отправкой.','Тапсырыс нәтижесі расталмады. Қайта жібермес бұрын iiko-ны тексеріңіз.')+'</b><br>'+esc(error.message||error.details||error.code||'Неизвестная ошибка')+'</div>';
   }finally{
     button.disabled=false;
     button.textContent=t('Отправить ОПЛАЧЕННЫЙ тест · '+money(total()),'ТӨЛЕНГЕН тест жіберу · '+money(total()));
@@ -822,14 +836,14 @@ function renderPhoneEntry(){
   continueBtn.disabled=digits.length!==10;
   hint.className='phoneHint';
   hint.textContent=digits.length===10
-    ? t('Номер готов. Скидка 5% будет привязана к этому номеру.','Нөмір дайын. 5% жеңілдік осы нөмірге тіркеледі.')
+    ? t('Номер готов. Можно продолжить.','Нөмір дайын. Жалғастыруға болады.')
     : t('Введите 10 цифр после +7','+7-ден кейін 10 сан енгізіңіз');
 }
 function openPhoneEntry(){
   document.getElementById('modalRoot').innerHTML=
     '<div class="overlay"><div class="modal phoneModal">'+
       '<h2>'+t('Ваш номер телефона','Телефон нөміріңіз')+'</h2>'+
-      '<div class="phoneGift"><div class="phoneGiftIcon">₸</div><div>'+t('Введите номер телефона и получите <b>скидку 5%</b> на первый заказ через киоск.','Телефон нөміріңізді енгізіп, киоск арқылы алғашқы тапсырысқа <b>5% жеңілдік</b> алыңыз.')+'</div></div>'+
+      '<div class="phoneGift"><div class="phoneGiftIcon">₸</div><div>'+t('Введите номер телефона или продолжите без него.','Телефон нөміріңізді енгізіңіз немесе нөмірсіз жалғастырыңыз.')+'</div></div>'+
       '<div class="phoneInputWrap"><div class="phoneInputLabel">'+t('Номер телефона','Телефон нөмірі')+'</div><div id="phoneDisplay" class="phoneDisplay">+7</div><div id="phoneHint" class="phoneHint"></div></div>'+
       '<div class="phoneKeypad">'+
         ['1','2','3','4','5','6','7','8','9','','0','⌫'].map(function(key){return key?'<button class="phoneKey'+(key==='⌫'?' delete':'')+'" data-phone-key="'+key+'">'+key+'</button>':'<div></div>'}).join('')+
@@ -880,8 +894,7 @@ function openPay(){
   document.querySelectorAll('.payChoice').forEach(function(b){b.onclick=showSuccess});
 }
 function showSuccess(){
-  var no=Math.floor(100+Math.random()*900);
-  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal center"><div class="success">✓</div><h2>'+t('Заказ принят','Тапсырыс қабылданды')+'</h2><div style="font-size:42px;font-weight:1000;margin:14px">№ '+no+'</div><p class="lead">'+t('Оплата и отправка в iiko пока в тестовом режиме.','Төлем және iiko-ға жіберу әзірге тест режимінде.')+'</p><button class="primary" id="finish" style="width:100%">'+t('Готово','Дайын')+'</button></div></div>';
+  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal center"><div class="success">✓</div><h2>'+t('Демонстрация завершена','Көрсетілім аяқталды')+'</h2><p class="lead">'+t('Оплата не проводилась. Заказ в iiko не отправлен.','Төлем жасалмады. Тапсырыс iiko-ға жіберілген жоқ.')+'</p><button class="primary" id="finish" style="width:100%">'+t('Готово','Дайын')+'</button></div></div>';
   enableBackdropClose();
   document.getElementById('finish').onclick=function(){cart=[];customerPhone='';closeModal();updateCart();refreshCardActions()};
 }
