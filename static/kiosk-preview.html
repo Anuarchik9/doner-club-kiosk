@@ -46,7 +46,7 @@
 </div>
 <div id="modalRoot"></div>
 <script>
-var lang='ru', categories=[], products=[], activeCat=null, cart=[], selected=null, menuReady=false, retryTimer=null, customerPhone='';
+var lang='ru', categories=[], products=[], activeCat=null, cart=[], selected=null, menuReady=false, retryTimer=null, customerPhone='', crmWelcomeEligible=false, crmWelcomePercent=0, crmCustomerExists=false, crmLookupReady=false;
 var CAT_KZ={'Комбо':'Комбо','Донер':'Донерлер','Донеры':'Донерлер','Бар':'Сусындар','Напитки':'Сусындар','Чаи':'Шай','Сладости':'Тәттілер','Дополнительное':'Қосымша','Дополнительно':'Қосымша','Батоны':'Батондар','Фри':'Фри','Стрипсы':'Стрипстер','Акции':'Науқандар'};
 var MENU_CACHE_KEY='donerclub-kiosk-arai-menu-v1', MENU_CACHE_TTL=10*60*1000;
 var CART_SESSION_KEY='donerclub-kiosk-arai-cart-v1';
@@ -57,6 +57,9 @@ function categoryName(c){return lang==='ru'?c.name:(CAT_KZ[c.name]||c.name)}
 function productName(p){return p.name}
 function count(){return cart.reduce(function(s,x){return s+x.q},0)}
 function total(){return cart.reduce(function(s,x){return s+x.q*x.unitPrice},0)}
+function welcomeDiscountAmount(){return crmWelcomeEligible?Number((total()*(Number(crmWelcomePercent)||0)/100).toFixed(2)):0}
+function payableTotal(){return Math.max(0,Number((total()-welcomeDiscountAmount()).toFixed(2)))}
+function resetCrmDiscount(){crmWelcomeEligible=false;crmWelcomePercent=0;crmCustomerExists=false;crmLookupReady=false}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]})}
 
 function restoreCartSession(){
@@ -843,7 +846,7 @@ function openPhoneEntry(){
   document.getElementById('modalRoot').innerHTML=
     '<div class="overlay"><div class="modal phoneModal">'+
       '<h2>'+t('Ваш номер телефона','Телефон нөміріңіз')+'</h2>'+
-      '<div class="phoneGift"><div class="phoneGiftIcon">₸</div><div>'+t('Введите номер телефона или продолжите без него.','Телефон нөміріңізді енгізіңіз немесе нөмірсіз жалғастырыңыз.')+'</div></div>'+
+      '<div class="phoneGift"><div class="phoneGiftIcon">₸</div><div>'+t('Введите номер телефона — проверим скидку 5% на первый заказ через киоск.','Телефон нөміріңізді енгізіңіз — киоск арқылы алғашқы тапсырысқа 5% жеңілдікті тексереміз.')+'</div></div>'+
       '<div class="phoneInputWrap"><div class="phoneInputLabel">'+t('Номер телефона','Телефон нөмірі')+'</div><div id="phoneDisplay" class="phoneDisplay">+7</div><div id="phoneHint" class="phoneHint"></div></div>'+
       '<div class="phoneKeypad">'+
         ['1','2','3','4','5','6','7','8','9','','0','⌫'].map(function(key){return key?'<button class="phoneKey'+(key==='⌫'?' delete':'')+'" data-phone-key="'+key+'">'+key+'</button>':'<div></div>'}).join('')+
@@ -861,34 +864,79 @@ function openPhoneEntry(){
       if(key==='⌫')digits=digits.slice(0,-1);
       else if(digits.length<10)digits+=key;
       customerPhone=digits;
+      resetCrmDiscount();
       renderPhoneEntry();
     };
   });
 
   document.getElementById('phoneSkip').onclick=function(){
     customerPhone='';
+    resetCrmDiscount();
     openPay();
   };
-  document.getElementById('phoneContinue').onclick=function(){
+  document.getElementById('phoneContinue').onclick=async function(){
     var digits=phoneDigitsOnly(customerPhone);
+    var hint=document.getElementById('phoneHint');
+    var button=document.getElementById('phoneContinue');
     if(digits.length!==10){
-      var hint=document.getElementById('phoneHint');
       if(hint){
         hint.className='phoneHint error';
         hint.textContent=t('Проверьте номер телефона. Нужно 10 цифр после +7.','Телефон нөмірін тексеріңіз. +7-ден кейін 10 сан болуы керек.');
       }
       return;
     }
+
     customerPhone='+7'+digits;
-    openPay();
+    button.disabled=true;
+    button.textContent=t('Проверяю скидку…','Жеңілдік тексерілуде…');
+    if(hint){
+      hint.className='phoneHint';
+      hint.textContent=t('Проверяем номер в Doner Club CRM…','Нөмір Doner Club CRM-де тексерілуде…');
+    }
+
+    try{
+      var response=await fetch('/kiosk-crm-customer?phone='+encodeURIComponent(customerPhone),{cache:'no-store'});
+      var data=await response.json();
+      if(!response.ok||!data.success)throw data;
+
+      crmCustomerExists=!!data.exists;
+      crmLookupReady=true;
+      crmWelcomeEligible=!!(data.welcomeDiscount&&data.welcomeDiscount.eligible);
+      crmWelcomePercent=Number((data.welcomeDiscount&&data.welcomeDiscount.percent)||0);
+      openPay();
+    }catch(error){
+      resetCrmDiscount();
+      button.disabled=false;
+      button.textContent=t('Продолжить','Жалғастыру');
+      if(hint){
+        hint.className='phoneHint error';
+        hint.textContent=t(
+          'Не удалось проверить скидку. Попробуйте ещё раз или продолжите без номера.',
+          'Жеңілдікті тексеру мүмкін болмады. Қайта көріңіз немесе нөмірсіз жалғастырыңыз.'
+        );
+      }
+    }
   };
   document.getElementById('phoneBack').onclick=openCart;
 }
 function openPay(){
+  var discount=welcomeDiscountAmount();
+  var finalTotal=payableTotal();
   var phoneNote=customerPhone
-    ? '<div class="setup" style="margin-bottom:14px">'+t('Бонусный номер: ','Бонустық нөмір: ')+'<b>'+esc(formattedPhone())+'</b></div>'
+    ? '<div class="setup" style="margin-bottom:14px">'+t('Номер клиента: ','Клиент нөмірі: ')+'<b>'+esc(formattedPhone())+'</b>'+
+      (crmLookupReady
+        ? (crmWelcomeEligible
+          ? '<br><span style="color:#16843a;font-weight:900">'+t('Скидка '+crmWelcomePercent+'% на первый заказ применена.','Алғашқы тапсырысқа '+crmWelcomePercent+'% жеңілдік қолданылды.')+'</span>'
+          : '<br><span style="color:#777">'+t('Приветственная скидка 5% по этому номеру уже использована.','Бұл нөмір бойынша 5% алғашқы жеңілдік бұрын қолданылған.')+'</span>')
+        : '')+
+      '</div>'
     : '';
-  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal"><h2>'+t('Способ оплаты','Төлем тәсілі')+'</h2>'+phoneNote+'<div class="paygrid"><button class="pay payChoice"><div style="font-size:42px">💳</div><b>ForteBank</b><span>'+t('Банковская карта / Apple Pay','Банк картасы / Apple Pay')+'</span></button><button class="pay payChoice"><div style="font-size:42px">▦</div><b>'+t('Единый QR','Бірыңғай QR')+'</b><span>'+t('QR на сумму заказа','Тапсырыс сомасына QR')+'</span></button></div><div class="actions"><button class="secondary" id="backCart">'+t('Назад','Артқа')+'</button></div></div></div>';
+  var priceSummary='<div class="setup" style="margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;gap:20px"><span>'+t('Сумма заказа','Тапсырыс сомасы')+'</span><b>'+money(total())+'</b></div>'+
+    (discount>0?'<div style="display:flex;justify-content:space-between;gap:20px;color:#16843a;margin-top:6px"><span>'+t('Скидка '+crmWelcomePercent+'%','Жеңілдік '+crmWelcomePercent+'%')+'</span><b>− '+money(discount)+'</b></div>':'')+
+    '<div style="display:flex;justify-content:space-between;gap:20px;font-size:18px;margin-top:9px;padding-top:9px;border-top:1px solid #e7e2dc"><b>'+t('К оплате','Төлемге')+'</b><b>'+money(finalTotal)+'</b></div>'+
+    '</div>';
+  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal"><h2>'+t('Способ оплаты','Төлем тәсілі')+'</h2>'+phoneNote+priceSummary+'<div class="paygrid"><button class="pay payChoice"><div style="font-size:42px">💳</div><b>ForteBank</b><span>'+t('Банковская карта / Apple Pay','Банк картасы / Apple Pay')+'</span></button><button class="pay payChoice"><div style="font-size:42px">▦</div><b>'+t('Единый QR','Бірыңғай QR')+'</b><span>'+t('QR на сумму '+money(finalTotal),'QR сомасы '+money(finalTotal))+'</span></button></div><div class="actions"><button class="secondary" id="backCart">'+t('Назад','Артқа')+'</button></div></div></div>';
   enableBackdropClose();
   document.getElementById('backCart').onclick=openPhoneEntry;
   document.querySelectorAll('.payChoice').forEach(function(b){b.onclick=showSuccess});
@@ -896,7 +944,7 @@ function openPay(){
 function showSuccess(){
   document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal center"><div class="success">✓</div><h2>'+t('Демонстрация завершена','Көрсетілім аяқталды')+'</h2><p class="lead">'+t('Оплата не проводилась. Заказ в iiko не отправлен.','Төлем жасалмады. Тапсырыс iiko-ға жіберілген жоқ.')+'</p><button class="primary" id="finish" style="width:100%">'+t('Готово','Дайын')+'</button></div></div>';
   enableBackdropClose();
-  document.getElementById('finish').onclick=function(){cart=[];customerPhone='';closeModal();updateCart();refreshCardActions()};
+  document.getElementById('finish').onclick=function(){cart=[];customerPhone='';resetCrmDiscount();closeModal();updateCart();refreshCardActions()};
 }
 function handlePushQuery(){
   try{

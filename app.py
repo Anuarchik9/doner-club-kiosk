@@ -9,6 +9,8 @@ from flask import Flask, jsonify, request
 app = Flask(__name__)
 
 IIKO_BASE_URL = "https://api-ru.iiko.services"
+CRM_BASE_URL = os.environ.get("CRM_BASE_URL", "").rstrip("/")
+CRM_API_KEY = os.environ.get("CRM_API_KEY", "")
 TOKEN_TTL_SECONDS = 50 * 60
 DEPARTMENTS_TTL_SECONDS = 10 * 60
 
@@ -981,6 +983,48 @@ def kiosk_test_paid_order():
         }), 502
     except Exception as error:
         return jsonify({"success": False, "code": "KIOSK_PAID_TEST_ORDER_ERROR", "message": str(error)}), 500
+
+
+@app.route("/kiosk-crm-customer", methods=["GET"])
+def kiosk_crm_customer():
+    phone = str(request.args.get("phone") or "").strip()
+    if not phone:
+        return jsonify(success=False, code="PHONE_REQUIRED", message="phone is required"), 400
+    if not CRM_BASE_URL or not CRM_API_KEY:
+        return jsonify(success=False, code="CRM_NOT_CONFIGURED", message="CRM connection is not configured"), 503
+
+    try:
+        response = requests.get(
+            f"{CRM_BASE_URL}/api/v1/customers/lookup",
+            params={"phone": phone},
+            headers={"X-API-Key": CRM_API_KEY},
+            timeout=10,
+        )
+    except requests.Timeout:
+        return jsonify(success=False, code="CRM_TIMEOUT", message="CRM did not answer in time"), 504
+    except requests.RequestException as error:
+        return jsonify(success=False, code="CRM_UNAVAILABLE", message=str(error)), 502
+
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {"error": response.text[:1000]}
+
+    if not response.ok:
+        return jsonify(
+            success=False,
+            code="CRM_LOOKUP_FAILED",
+            statusCode=response.status_code,
+            details=payload,
+        ), 502 if response.status_code >= 500 else response.status_code
+
+    return jsonify(
+        success=True,
+        exists=bool(payload.get("exists")),
+        customerId=payload.get("customerId"),
+        phone=payload.get("phone"),
+        welcomeDiscount=payload.get("welcomeDiscount") or {},
+    )
 
 
 if __name__ == "__main__":
