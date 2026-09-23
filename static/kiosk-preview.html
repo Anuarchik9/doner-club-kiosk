@@ -20,18 +20,40 @@
 @keyframes modalBackdropIn{from{background:rgba(0,0,0,0)}to{background:rgba(0,0,0,.53)}}@keyframes modalCardIn{0%{opacity:0;transform:translateY(18px) scale(.975)}60%{opacity:1;transform:translateY(-2px) scale(1.003)}100%{opacity:1;transform:translateY(0) scale(1)}}@media(prefers-reduced-motion:reduce){.overlay,.modal{animation:none!important}}.empty{grid-column:1/-1;background:#fff;border:1px solid var(--line);border-radius:24px;padding:36px;text-align:center;color:#756e68}.empty b{display:block;color:#111;font-size:21px;margin-bottom:8px}
 .orderbar{position:fixed;left:16px;right:16px;bottom:14px;height:76px;background:#151515;color:#fff;border-radius:22px;display:flex;align-items:center;padding:10px 14px 10px 18px;gap:14px;box-shadow:0 18px 45px #0003;z-index:15}.sumwrap{min-width:155px}.count{font-size:11px;color:#aaa;font-weight:800}.sum{font-size:23px;font-weight:1000}.items{flex:1;color:#c8c8c8;font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.checkout{height:52px;border-radius:16px;padding:0 22px;background:var(--o);color:#fff;font-weight:1000}.checkout:disabled{opacity:.4}
 .overlay{position:fixed;inset:0;background:#0008;z-index:30;display:grid;place-items:center;padding:20px;animation:modalBackdropIn .18s ease-out both}.modal{width:min(760px,96vw);max-height:92vh;overflow:auto;background:#fff;border-radius:30px;padding:26px;transform-origin:center center;animation:modalCardIn .26s cubic-bezier(.22,.8,.22,1) both}.productModal{width:min(1080px,96vw);padding:0;overflow:hidden;display:grid;grid-template-columns:minmax(320px,48%) 1fr}.productHero{min-height:590px;background:#93a75b;display:flex;align-items:center;justify-content:center;overflow:hidden}.productHero img{width:100%;height:100%;min-height:590px;object-fit:contain;display:block}.productInfo{padding:28px 30px;max-height:92vh;overflow:auto}.productTop{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.productClose{width:38px;height:38px;border-radius:50%;background:#f3f0ec;color:#333;font-size:22px;line-height:1;flex:0 0 auto}.productMeta{font-size:12px;font-weight:900;color:#766f69;margin:4px 0 8px}.modal h2{font-size:30px;margin:0 0 8px}.lead{margin:0 0 18px;color:var(--muted);line-height:1.4}.section{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:#888;font-weight:950;margin:18px 0 8px}.opt{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:16px;padding:13px 14px;margin:8px 0}.opt input{width:22px;height:22px;accent-color:var(--o)}.optmain{flex:1}.optn{font-weight:950}.optnote{font-size:11px;color:#888;margin-top:2px}.tag{font-size:12px;font-weight:950;color:#333}.actions{display:flex;gap:12px;margin-top:20px}.secondary,.primary{height:54px;border-radius:16px;font-weight:1000}.secondary{flex:1;background:#f2efeb}.primary{flex:1.5;background:var(--o);color:#fff}.cartline{display:flex;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid #eee}.mods{font-size:11px;color:#777;margin-top:4px}.qty{display:inline-flex;align-items:center;border:1px solid #ddd;border-radius:11px;overflow:hidden;margin-top:8px}.qty button{width:34px;height:32px;background:#f4f1ed;font-weight:1000}.qty span{width:34px;text-align:center;font-weight:900}.cartModal{width:min(900px,96vw);max-height:90vh;padding:24px 26px 20px;position:relative}.cartModalHead{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding-right:48px}.cartSummary{font-size:13px;color:var(--muted);margin-top:5px}.cartGrandTotal{font-size:28px;font-weight:1000;white-space:nowrap}.cartClose{position:absolute;right:20px;top:18px;width:40px;height:40px;border-radius:50%;background:#f2efeb;color:#555;font-size:25px;display:grid;place-items:center;transition:.16s}.cartClose:hover{background:#e9e4df;transform:scale(1.05)}.cartItemsBox{margin-top:12px;border-top:1px solid #eee}.cartRichLine{display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:14px;align-items:start;padding:14px 0;border-bottom:1px solid #eee}.cartThumb{width:76px;height:76px;border-radius:14px;overflow:hidden;background:#91aa5a;display:grid;place-items:center}.cartThumb img{width:100%;height:100%;object-fit:cover}.cartThumbFallback{color:#fff;font-size:24px;font-weight:1000}.cartRichName{font-size:17px;font-weight:1000;line-height:1.15}.cartRichDesc{font-size:11px;color:#777;margin-top:4px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.cartRichMods{font-size:11px;color:#777;margin-top:5px}.cartRichBottom{display:flex;align-items:center;gap:12px;margin-top:9px}.cartLineTotal{font-size:18px;font-weight:1000;white-space:nowrap;padding-top:3px}.recommendWrap{margin-top:18px;padding-top:18px;border-top:1px solid #eee}.recommendTitle{font-size:22px;font-weight:1000;margin:0 0 4px}.recommendSub{font-size:12px;color:var(--muted);margin-bottom:12px}.recommendGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.recommendCard{position:relative;border:1px solid #e9e2db;border-radius:18px;overflow:hidden;background:#fff;cursor:pointer;transition:transform .17s ease,box-shadow .17s ease,border-color .17s ease}.recommendCard:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.08);border-color:#ddd3ca}.recommendPhoto{height:auto;aspect-ratio:4/3;background:#91aa5a;overflow:hidden}.recommendPhoto img{width:100%;height:100%;object-fit:contain;display:block}.recommendBody{padding:10px 11px 12px}.recommendPrice{font-size:16px;font-weight:1000;color:var(--o)}.recommendName{font-size:14px;font-weight:950;line-height:1.2;margin-top:4px}.recommendAdd{position:absolute;right:9px;top:9px;width:38px;height:38px;border-radius:12px;background:#e9f7ff;color:#2889b4;font-size:26px;font-weight:900;display:grid;place-items:center;box-shadow:0 5px 12px rgba(40,137,180,.15);transition:.16s}.recommendAdd:hover{transform:scale(1.06);background:#d9f1ff}.recommendBadge{position:absolute;left:9px;top:9px;border-radius:999px;background:#d9f1ff;color:#146b9a;font-size:10px;font-weight:900;padding:5px 8px}.cartFooter{position:sticky;bottom:-20px;z-index:8;background:#fff;border-top:1px solid #eee;padding:14px 0 20px;margin:16px 0 -20px;box-shadow:0 -14px 24px rgba(255,255,255,.96)}.cartFooter .actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(140px,.72fr) minmax(0,1.55fr);gap:12px;margin-top:0;align-items:stretch}.cartFooter .secondary,.cartFooter .primary,.cartFooter .testIikoBtn{width:100%;min-width:0;height:54px;flex:none}.testIikoBtn{border-radius:16px;padding:0 16px;background:#232323;color:#fff;font-weight:1000;white-space:nowrap;transition:background .16s ease,transform .16s ease}.testIikoBtn:hover{background:#333;transform:translateY(-1px)}.testIikoBtn:active{transform:translateY(0) scale(.98)}.testIikoPanel{margin-top:14px;border:1px solid #e7dfd8;background:#faf8f5;border-radius:18px;padding:15px}.testIikoNotice{font-size:12px;line-height:1.45;color:#6f665e;background:#fff5e9;border:1px solid #ffd9b5;border-radius:14px;padding:11px 12px;margin-bottom:12px}.testIikoGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.testIikoField label{display:block;font-size:11px;font-weight:900;color:#777;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}.testIikoField select{width:100%;height:46px;border:1px solid #ddd5ce;border-radius:13px;background:#fff;padding:0 12px;font:inherit}.testIikoStatus{margin-top:11px;font-size:12px;color:#6f665e}.testIikoSend{width:100%;height:54px;border-radius:16px;background:var(--o);color:#fff;font-weight:1000;margin-top:12px}.testIikoSend:disabled{opacity:.45}.testIikoPaid{width:100%;height:58px;border-radius:16px;background:#0a9f73;color:#fff;font-weight:1000;margin-top:10px;box-shadow:0 8px 18px rgba(10,159,115,.18);transition:transform .16s ease,filter .16s ease}.testIikoPaid:hover{filter:brightness(1.04);transform:translateY(-1px)}.testIikoPaid:active{transform:scale(.99)}.paidTestWarning{margin-top:10px;padding:10px 12px;border-radius:13px;background:#fff4e8;border:1px solid #ffd3a8;color:#82512f;font-size:11px;line-height:1.4}.testIikoBack{width:100%;height:46px;border-radius:14px;background:#f2efeb;font-weight:950;margin-top:9px}.testResult{border-radius:16px;padding:14px;margin-top:12px;font-size:13px;line-height:1.45}.testResult.ok{background:#edf8e9;color:#34752b;border:1px solid #cfe8c7}.testResult.bad{background:#fff0ec;color:#a9472e;border:1px solid #f3c7bb}.paygrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pay{padding:20px;border:1px solid var(--line);border-radius:20px;background:#fff;text-align:left}.pay b{display:block;font-size:19px;margin:8px 0}.pay span{font-size:12px;color:#777}.phoneModal{width:min(620px,94vw);padding:30px}.phoneGift{display:flex;align-items:center;gap:12px;background:#fff4ec;border:1px solid #ffd7c1;border-radius:18px;padding:14px 16px;margin:14px 0 18px;color:#7a3c1f;font-size:14px;font-weight:800;line-height:1.35}.phoneGiftIcon{width:46px;height:46px;border-radius:14px;background:var(--o);color:#fff;display:grid;place-items:center;font-size:24px;flex:0 0 auto}.phoneInputWrap{margin:12px 0 14px}.phoneInputLabel{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#888;font-weight:950;margin-bottom:7px}.phoneDisplay{height:64px;border:2px solid #e8e0d9;border-radius:18px;background:#faf8f5;display:flex;align-items:center;padding:0 18px;font-size:28px;font-weight:1000;letter-spacing:.02em}.phoneDisplay.active{border-color:var(--o);background:#fff}.phoneHint{font-size:12px;color:var(--muted);margin-top:7px;min-height:18px}.phoneHint.error{color:#b8432c;font-weight:850}.phoneKeypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}.phoneKey{height:60px;border-radius:16px;background:#f3efeb;color:#171717;font-size:24px;font-weight:1000;transition:transform .12s ease,background .12s ease}.phoneKey:hover{background:#ebe5df}.phoneKey:active{transform:scale(.96)}.phoneKey.delete{font-size:21px}.phoneActions{display:grid;grid-template-columns:1fr 1.35fr;gap:10px;margin-top:16px}.phoneSkip{height:54px;border-radius:16px;background:#f2efeb;color:#333;font-weight:1000}.phoneContinue{height:54px;border-radius:16px;background:var(--o);color:#fff;font-weight:1000}.phoneContinue:disabled{opacity:.45}.phoneBack{width:100%;height:46px;border-radius:14px;background:transparent;color:#777;font-weight:900;margin-top:8px}.success{width:78px;height:78px;border-radius:50%;margin:0 auto 14px;background:#e8f5e4;color:#4b9538;display:grid;place-items:center;font-size:44px;font-weight:1000}.center{text-align:center}.setup{background:#fff7e7;border:1px solid #f1d79d;border-radius:15px;padding:13px 15px;margin-bottom:14px;color:#6c5726;font-size:12px;line-height:1.45}
-@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.status{display:none}.productModal{grid-template-columns:42% 58%}.productHero,.productHero img{min-height:520px}}@media(max-width:650px){.grid{grid-template-columns:1fr}.photo{height:210px}.items{display:none}.orderbar{left:8px;right:8px}.checkout{padding:0 14px}.productModal{display:block}.productHero,.productHero img{min-height:260px;max-height:300px}.productInfo{padding:22px}.cartModal{padding:20px 16px 16px}.cartModalHead{display:block;padding-right:42px}.cartGrandTotal{font-size:24px;margin-top:8px}.cartRichLine{grid-template-columns:62px minmax(0,1fr);gap:10px}.cartThumb{width:62px;height:62px}.cartLineTotal{grid-column:2}.recommendGrid{grid-template-columns:1fr 1fr}.recommendPhoto{height:auto;aspect-ratio:4/3}.recommendName{font-size:12px}.recommendPrice{font-size:14px}.testIikoGrid{grid-template-columns:1fr}.cartFooter{bottom:-16px;padding-bottom:16px;margin-bottom:-16px}.cartFooter .actions{grid-template-columns:1fr 1fr}.cartFooter .primary{grid-column:1/-1}.testIikoBtn{width:100%}}
+.orderModeScreen{flex:1;display:flex;align-items:center;justify-content:center;padding:36px 24px 42px;background:radial-gradient(circle at 50% 12%,#fff 0,#f8f4ef 46%,#f3eee8 100%);overflow:auto}.orderModeInner{width:min(980px,100%);text-align:center}.orderModeEyebrow{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;background:#fff3ec;border:1px solid #ffd6c0;color:#b84614;font-size:11px;font-weight:1000;text-transform:uppercase;letter-spacing:.08em}.orderModeTitle{font-size:46px;line-height:1.04;margin:16px 0 8px;font-weight:1000;letter-spacing:-.03em}.orderModeLead{margin:0 auto 28px;max-width:620px;color:#7a726a;font-size:15px;font-weight:750}.orderModeChoices{display:grid;grid-template-columns:1fr 1fr;gap:26px;max-width:760px;margin:0 auto}.orderModeChoice{aspect-ratio:1/1;border-radius:34px;border:2px solid #ebe2da;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:26px;box-shadow:0 16px 44px rgba(35,25,15,.07);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease,background .18s ease}.orderModeChoice:hover{transform:translateY(-7px);box-shadow:0 24px 55px rgba(35,25,15,.12);border-color:#ffc7aa}.orderModeChoice:active{transform:translateY(-2px) scale(.985)}.orderModeChoice.takeaway{background:#171717;border-color:#171717;color:#fff}.orderModeChoice.takeaway:hover{border-color:#ff7a3d;box-shadow:0 24px 55px rgba(0,0,0,.22)}.orderModeIcon{width:112px;height:112px;border-radius:30px;background:#fff1e8;color:var(--o);display:grid;place-items:center;margin-bottom:24px}.takeaway .orderModeIcon{background:#2a2a2a;color:#ff7a3d}.orderModeIcon svg{width:62px;height:62px;stroke:currentColor;fill:none;stroke-width:2.15;stroke-linecap:round;stroke-linejoin:round}.orderModeChoice strong{font-size:31px;line-height:1.05}.orderModeChoice small{display:block;margin-top:10px;color:#82786f;font-size:13px;font-weight:750}.orderModeChoice.takeaway small{color:#aaa}.orderModeFoot{margin-top:23px;color:#9a9189;font-size:11px;font-weight:800}.modePending .cats,.modePending .content,.modePending .orderbar,.modePending .carthead{display:none!important}.modeChosen .orderModeScreen{display:none}.serviceModeBadge{display:none;padding:8px 11px;border-radius:12px;background:#f3f0ec;color:#3d3935;font-size:12px;font-weight:950;white-space:nowrap}.modeChosen .serviceModeBadge{display:inline-flex}
+@media(max-width:900px){.orderModeTitle{font-size:40px}.orderModeChoices{max-width:680px;gap:20px}.orderModeChoice{border-radius:28px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.status{display:none}.productModal{grid-template-columns:42% 58%}.productHero,.productHero img{min-height:520px}}@media(max-width:650px){.orderModeScreen{padding:24px 16px}.orderModeTitle{font-size:34px}.orderModeChoices{grid-template-columns:1fr 1fr;gap:12px}.orderModeChoice{padding:16px;border-radius:22px}.orderModeIcon{width:76px;height:76px;border-radius:22px;margin-bottom:14px}.orderModeIcon svg{width:43px;height:43px}.orderModeChoice strong{font-size:20px}.orderModeChoice small{font-size:10px}.grid{grid-template-columns:1fr}.photo{height:210px}.items{display:none}.orderbar{left:8px;right:8px}.checkout{padding:0 14px}.productModal{display:block}.productHero,.productHero img{min-height:260px;max-height:300px}.productInfo{padding:22px}.cartModal{padding:20px 16px 16px}.cartModalHead{display:block;padding-right:42px}.cartGrandTotal{font-size:24px;margin-top:8px}.cartRichLine{grid-template-columns:62px minmax(0,1fr);gap:10px}.cartThumb{width:62px;height:62px}.cartLineTotal{grid-column:2}.recommendGrid{grid-template-columns:1fr 1fr}.recommendPhoto{height:auto;aspect-ratio:4/3}.recommendName{font-size:12px}.recommendPrice{font-size:14px}.testIikoGrid{grid-template-columns:1fr}.cartFooter{bottom:-16px;padding-bottom:16px;margin-bottom:-16px}.cartFooter .actions{grid-template-columns:1fr 1fr}.cartFooter .primary{grid-column:1/-1}.testIikoBtn{width:100%}}
 </style>
 </head>
 <body>
-<div id="app">
+<div id="app" class="modePending">
   <div class="top">
     <div class="brand"><div class="mark">DC</div>DONER CLUB</div>
     <div id="pointBadge" class="pointBadge" title="Удерживайте для обновления меню">Арай</div>
+    <div id="serviceModeBadge" class="serviceModeBadge"></div>
     <div id="status" class="status" aria-hidden="true"></div>
     <div class="langs"><button id="kzBtn">ҚАЗ</button><button id="ruBtn" class="on">РУС</button></div>
     <button id="cartHead" class="carthead">Корзина · 0</button>
   </div>
+  <section id="orderModeScreen" class="orderModeScreen">
+    <div class="orderModeInner">
+      <div class="orderModeEyebrow">DONER CLUB · АРАЙ</div>
+      <h1 id="orderModeTitle" class="orderModeTitle">Где будете есть?</h1>
+      <p id="orderModeLead" class="orderModeLead">Выберите тип заказа — дальше откроется меню.</p>
+      <div class="orderModeChoices">
+        <button id="modeDineIn" class="orderModeChoice dinein" type="button">
+          <span class="orderModeIcon" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M16 34h32"/><path d="M20 34a12 12 0 0 1 24 0"/><path d="M32 18v-4"/><path d="M12 42h40"/><path d="M17 42v8"/><path d="M47 42v8"/></svg></span>
+          <strong id="modeDineInText">В зале</strong>
+          <small id="modeDineInSub">Заказ здесь</small>
+        </button>
+        <button id="modeTakeaway" class="orderModeChoice takeaway" type="button">
+          <span class="orderModeIcon" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M18 24h28l-3 28H21z"/><path d="M24 24v-4a8 8 0 0 1 16 0v4"/><path d="M25 34h14"/><path d="M32 29v10"/></svg></span>
+          <strong id="modeTakeawayText">С собой</strong>
+          <small id="modeTakeawaySub">Упакуем заказ</small>
+        </button>
+      </div>
+      <div id="orderModeFoot" class="orderModeFoot">Выбор автоматически передастся в iiko вместе с заказом.</div>
+    </div>
+  </section>
   <div id="cats" class="cats"></div>
   <div class="content">
     <div class="titleRow"><h1 id="title">Все меню</h1></div>
@@ -46,7 +68,7 @@
 </div>
 <div id="modalRoot"></div>
 <script>
-var lang='ru', categories=[], products=[], activeCat=null, cart=[], selected=null, menuReady=false, retryTimer=null, customerPhone='', crmWelcomeEligible=false, crmWelcomePercent=0, crmCustomerExists=false, crmLookupReady=false;
+var lang='ru', categories=[], products=[], activeCat=null, cart=[], selected=null, menuReady=false, retryTimer=null, customerPhone='', crmWelcomeEligible=false, crmWelcomePercent=0, crmCustomerExists=false, crmLookupReady=false, orderMode=null;
 var CAT_KZ={'Комбо':'Комбо','Донер':'Донерлер','Донеры':'Донерлер','Бар':'Сусындар','Напитки':'Сусындар','Чаи':'Шай','Сладости':'Тәттілер','Дополнительное':'Қосымша','Дополнительно':'Қосымша','Батоны':'Батондар','Фри':'Фри','Стрипсы':'Стрипстер','Акции':'Науқандар'};
 var MENU_CACHE_KEY='donerclub-kiosk-arai-menu-v1', MENU_CACHE_TTL=10*60*1000;
 var CART_SESSION_KEY='donerclub-kiosk-arai-cart-v1';
@@ -62,6 +84,107 @@ function payableTotal(){return Math.max(0,Number((total()-welcomeDiscountAmount(
 function resetCrmDiscount(){crmWelcomeEligible=false;crmWelcomePercent=0;crmCustomerExists=false;crmLookupReady=false}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]})}
 
+function normOptionText(value){
+  return String(value||'').toLowerCase().replace(/ё/g,'е').replace(/[—–−_]+/g,' ').replace(/[^a-zа-я0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+}
+function optionMode(name){
+  var text=normOptionText(name);
+  if(text.indexOf('с собой')>=0 || text.indexOf('на вынос')>=0)return 'takeaway';
+  if(text.indexOf('в зале')>=0 || text==='зале' || text.indexOf('зал')>=0)return 'dinein';
+  if(text.indexOf('летник')>=0 || text.indexOf('летняя')>=0)return 'terrace';
+  return null;
+}
+function isOrderTypeGroup(group){
+  if(!group)return false;
+  var groupName=normOptionText(group.name);
+  if(groupName.indexOf('тип заказа')>=0 || groupName.indexOf('формат заказа')>=0)return true;
+  var kinds={};
+  (group.items||[]).forEach(function(item){var k=optionMode(item.name);if(k)kinds[k]=true});
+  return !!(kinds.dinein&&kinds.takeaway);
+}
+function visibleModifierGroups(product){
+  return (product&&product.modifierGroups||[]).filter(function(group){
+    return group.items&&group.items.length&&!isOrderTypeGroup(group);
+  });
+}
+function selectedServiceModifier(product){
+  if(!orderMode||!product)return null;
+  var group=(product.modifierGroups||[]).find(isOrderTypeGroup);
+  if(!group)return null;
+  var item=(group.items||[]).find(function(modifier){return optionMode(modifier.name)===orderMode});
+  if(!item)return null;
+  return {
+    id:item.id,
+    groupId:group.id||'',
+    name:item.name||'',
+    price:Number(item.price||0)
+  };
+}
+function appendServiceModifier(product,mods,modIds,modGroupIds){
+  var service=selectedServiceModifier(product);
+  if(!service)return 0;
+  if(modIds.indexOf(service.id)<0){
+    mods.push(service.name);
+    modIds.push(service.id);
+    modGroupIds.push(service.groupId);
+  }
+  return service.price;
+}
+function applyOrderModeToExistingCart(){
+  if(!orderMode||!products.length||!cart.length)return;
+  cart.forEach(function(line){
+    var product=products.find(function(p){return p.id===line.productId});
+    if(!product)return;
+    var oldMods=Array.isArray(line.mods)?line.mods:[];
+    var oldIds=Array.isArray(line.modifierIds)?line.modifierIds:[];
+    var oldGroups=Array.isArray(line.modifierGroupIds)?line.modifierGroupIds:[];
+    var keepMods=[],keepIds=[],keepGroups=[];
+    oldIds.forEach(function(id,index){
+      var name=oldMods[index]||'';
+      if(optionMode(name))return;
+      keepIds.push(id);keepMods.push(name);keepGroups.push(oldGroups[index]||'');
+    });
+    appendServiceModifier(product,keepMods,keepIds,keepGroups);
+    line.mods=keepMods;line.modifierIds=keepIds;line.modifierGroupIds=keepGroups;
+    line.key=line.productId+'|'+keepIds.slice().sort().join(',');
+  });
+  persistCartSession();
+}
+function paintOrderModeScreen(){
+  var app=document.getElementById('app');
+  if(!app)return;
+  app.classList.toggle('modePending',!orderMode);
+  app.classList.toggle('modeChosen',!!orderMode);
+  var title=document.getElementById('orderModeTitle');
+  if(title)title.textContent=t('Где будете есть?','Қай жерде жейсіз?');
+  var lead=document.getElementById('orderModeLead');
+  if(lead)lead.textContent=t('Выберите тип заказа — дальше откроется меню.','Тапсырыс түрін таңдаңыз — содан кейін мәзір ашылады.');
+  var dine=document.getElementById('modeDineInText');
+  if(dine)dine.textContent=t('В зале','Залда');
+  var dineSub=document.getElementById('modeDineInSub');
+  if(dineSub)dineSub.textContent=t('Заказ здесь','Осында ішіп-жейсіз');
+  var take=document.getElementById('modeTakeawayText');
+  if(take)take.textContent=t('С собой','Өзіңізбен');
+  var takeSub=document.getElementById('modeTakeawaySub');
+  if(takeSub)takeSub.textContent=t('Упакуем заказ','Тапсырысты орап береміз');
+  var foot=document.getElementById('orderModeFoot');
+  if(foot)foot.textContent=t('Выбор автоматически передастся в iiko вместе с заказом.','Таңдау тапсырыспен бірге iiko-ға автоматты түрде жіберіледі.');
+  var badge=document.getElementById('serviceModeBadge');
+  if(badge)badge.textContent=orderMode==='dinein'?t('В зале','Залда'):orderMode==='takeaway'?t('С собой','Өзіңізбен'):'';
+}
+function chooseOrderMode(mode){
+  if(mode!=='dinein'&&mode!=='takeaway')return;
+  orderMode=mode;
+  applyOrderModeToExistingCart();
+  paintOrderModeScreen();
+  paint();
+  var content=document.querySelector('.content');
+  if(content)content.scrollTop=0;
+}
+function resetOrderMode(){
+  orderMode=null;
+  paintOrderModeScreen();
+}
 function restoreCartSession(){
   try{
     var raw=sessionStorage.getItem(CART_SESSION_KEY);
@@ -149,6 +272,7 @@ function applyMenuData(data){
   products=data.products||[];
   activeCat='all';
   menuReady=true;
+  applyOrderModeToExistingCart();
   var status=document.getElementById('status');
   status.className='status ok';
   status.textContent='Kiosk Арай · iiko · '+products.length+' поз.';
@@ -335,6 +459,7 @@ function syncActiveCategoryFromScroll(){
 }
 function paint(){
   document.documentElement.lang=lang==='ru'?'ru':'kk';
+  paintOrderModeScreen();
   document.getElementById('ruBtn').classList.toggle('on',lang==='ru');
   document.getElementById('kzBtn').classList.toggle('on',lang==='kz');
 
@@ -370,10 +495,11 @@ function paintGrid(){
   bindProductButtons(root);
 }
 function hasProductModifiers(p){
-  return (p.modifierGroups||[]).some(function(g){return g.items&&g.items.length});
+  return visibleModifierGroups(p).some(function(g){return g.items&&g.items.length});
 }
 function handleProduct(p){
   if(!p)return;
+  if(!orderMode){resetOrderMode();return;}
   if(hasProductModifiers(p)){
     openProduct(p);
   }else{
@@ -403,7 +529,9 @@ function decreaseProductFromCard(productId){
   refreshCardActions();
 }
 function addSimpleProduct(p){
-  var key=p.id+'|';
+  var mods=[],modIds=[],modGroupIds=[];
+  var serviceExtra=appendServiceModifier(p,mods,modIds,modGroupIds);
+  var key=p.id+'|'+modIds.slice().sort().join(',');
   var x=cart.find(function(z){return z.key===key});
   if(x)x.q++;
   else cart.push({
@@ -415,18 +543,18 @@ function addSimpleProduct(p){
     description:p.description||'',
     imageUrl:p.imageUrl||'',
     basePrice:p.price,
-    unitPrice:p.price,
+    unitPrice:p.price+serviceExtra,
     q:1,
-    mods:[],
-    modifierIds:[]
+    mods:mods,
+    modifierIds:modIds,
+    modifierGroupIds:modGroupIds
   });
   updateCart();
   refreshCardActions();
   animateAdded(p.id);
 }
 function removeSimpleProduct(productId){
-  var key=productId+'|';
-  var x=cart.find(function(z){return z.key===key});
+  var x=cart.find(function(z){return z.productId===productId});
   if(!x)return;
   x.q--;
   if(x.q<=0)cart=cart.filter(function(z){return z!==x});
@@ -442,7 +570,7 @@ function enableBackdropClose(){
 }
 function openProduct(p){
   selected=p;
-  var groups=(p.modifierGroups||[]).filter(function(g){return g.items&&g.items.length});
+  var groups=visibleModifierGroups(p);
   var body='';
   groups.forEach(function(g,gi){
     body+='<div class="section">'+esc(g.name||t('Добавки','Қоспалар'))+'</div>';
@@ -477,7 +605,7 @@ function openProduct(p){
 function updateProductButton(){
   var extra=0;document.querySelectorAll('.modInput:checked').forEach(function(i){extra+=Number(i.dataset.price||0)});
   var valid=true;
-  (selected.modifierGroups||[]).filter(function(g){return g.items&&g.items.length}).forEach(function(g,gi){
+  visibleModifierGroups(selected).forEach(function(g,gi){
     var inputs=Array.from(document.querySelectorAll('.modInput[name="g'+gi+'"]'));
     var quantity=inputs.filter(function(i){return i.checked}).length;
     var min=Number(g.minQuantity)||0,max=Number(g.maxQuantity)||0;
@@ -499,6 +627,7 @@ function confirmProduct(){
     modGroupIds.push(i.dataset.groupid||'');
     extra+=Number(i.dataset.price||0);
   });
+  extra+=appendServiceModifier(selected,mods,modIds,modGroupIds);
   var key=selected.id+'|'+modIds.slice().sort().join(',');
   var x=cart.find(function(z){return z.key===key});
   if(x)x.q++;else cart.push({key:key,productId:selected.id,itemId:selected.itemId,sizeId:selected.sizeId,name:selected.name,description:selected.description||'',imageUrl:selected.imageUrl||'',basePrice:selected.price,unitPrice:selected.price+extra,q:1,mods:mods,modifierIds:modIds,modifierGroupIds:modGroupIds});
@@ -944,7 +1073,7 @@ function openPay(){
 function showSuccess(){
   document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal center"><div class="success">✓</div><h2>'+t('Демонстрация завершена','Көрсетілім аяқталды')+'</h2><p class="lead">'+t('Оплата не проводилась. Заказ в iiko не отправлен.','Төлем жасалмады. Тапсырыс iiko-ға жіберілген жоқ.')+'</p><button class="primary" id="finish" style="width:100%">'+t('Готово','Дайын')+'</button></div></div>';
   enableBackdropClose();
-  document.getElementById('finish').onclick=function(){cart=[];customerPhone='';resetCrmDiscount();closeModal();updateCart();refreshCardActions()};
+  document.getElementById('finish').onclick=function(){cart=[];customerPhone='';resetCrmDiscount();closeModal();updateCart();refreshCardActions();resetOrderMode()};
 }
 function handlePushQuery(){
   try{
@@ -981,6 +1110,8 @@ document.getElementById('ruBtn').onclick=function(){lang='ru';paint()};
 document.getElementById('kzBtn').onclick=function(){lang='kz';paint()};
 document.getElementById('cartHead').onclick=openCart;
 document.getElementById('checkout').onclick=openCart;
+document.getElementById('modeDineIn').onclick=function(){chooseOrderMode('dinein')};
+document.getElementById('modeTakeaway').onclick=function(){chooseOrderMode('takeaway')};
 
 restoreCartSession();
 paint();if(!pushedOnOpen)loadMenu();
