@@ -8,6 +8,22 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
+SITE_ORIGINS = {
+    "https://doner-club-site.onrender.com",
+    "https://site.donerclub.kz",
+}
+
+
+@app.after_request
+def allow_site_menu_origin(response):
+    origin = request.headers.get("Origin")
+    if origin in SITE_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
 IIKO_BASE_URL = "https://api-ru.iiko.services"
 CRM_BASE_URL = os.environ.get("CRM_BASE_URL", "").rstrip("/")
 CRM_API_KEY = os.environ.get("CRM_API_KEY", "")
