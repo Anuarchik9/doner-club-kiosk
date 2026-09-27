@@ -191,6 +191,51 @@ def get_external_menu_by_id(external_menu_id, organization_id):
     return response.json()
 
 
+def get_stop_lists(organization_id):
+    response = iiko_post(
+        "/api/1/stop_lists",
+        {"organizationIds": [organization_id]},
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def normalize_stop_list(payload, organization_id):
+    items = []
+    stopped_ids = set()
+
+    for group in payload.get("terminalGroupStopLists", []) or []:
+        group_org = group.get("organizationId")
+        if group_org and str(group_org) != str(organization_id):
+            continue
+
+        terminal_group_id = group.get("terminalGroupId") or group.get("id")
+        for item in group.get("items", []) or []:
+            product_id = str(item.get("productId") or "").strip()
+            if not product_id:
+                continue
+
+            raw_balance = item.get("balance")
+            try:
+                balance = float(raw_balance) if raw_balance is not None else None
+            except (TypeError, ValueError, OverflowError):
+                balance = None
+
+            stopped = balance is None or balance <= 0
+            if stopped:
+                stopped_ids.add(product_id)
+
+            items.append({
+                "productId": product_id,
+                "balance": balance,
+                "stopped": stopped,
+                "terminalGroupId": terminal_group_id,
+            })
+
+    return sorted(stopped_ids), items
+
+
 def _menu_price(prices, organization_id):
     prices = prices or []
     matching = [entry for entry in prices if str(entry.get("organizationId")) == str(organization_id)]
@@ -666,6 +711,58 @@ def kiosk_menu():
         }), 502
     except Exception as error:
         return jsonify({"success": False, "code": "KIOSK_MENU_ERROR", "message": str(error)}), 500
+
+
+@app.route("/kiosk-stop-list")
+def kiosk_stop_list():
+    point = request.args.get("point", "Arai").strip()
+
+    try:
+        department, available_departments = find_department(point)
+        if not department:
+            return jsonify({
+                "success": False,
+                "code": "POINT_NOT_FOUND",
+                "message": f"Point '{point}' not found",
+                "availablePoints": [
+                    {"code": d.get("code"), "name": d.get("name")}
+                    for d in available_departments
+                ],
+            }), 404
+
+        organization_id = department["organizationId"]
+        payload = get_stop_lists(organization_id)
+        stopped_product_ids, items = normalize_stop_list(payload, organization_id)
+
+        response = jsonify({
+            "success": True,
+            "source": "iikoCloud stop list",
+            "point": {
+                "code": department.get("code"),
+                "name": department.get("name"),
+                "organizationId": organization_id,
+            },
+            "stoppedProductIds": stopped_product_ids,
+            "items": items,
+            "checkedAt": int(time.time()),
+        })
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    except ConfigurationError as error:
+        return jsonify(success=False, code="KIOSK_API_NOT_CONFIGURED", message=str(error)), 503
+    except requests.Timeout:
+        return jsonify({"success": False, "code": "IIKO_TIMEOUT", "message": "iiko stop list did not answer in time."}), 504
+    except requests.HTTPError as error:
+        response = error.response
+        return jsonify({
+            "success": False,
+            "code": "IIKO_STOP_LIST_HTTP_ERROR",
+            "statusCode": response.status_code if response is not None else None,
+            "details": response.text[:1500] if response is not None else str(error),
+        }), 502
+    except Exception as error:
+        return jsonify({"success": False, "code": "KIOSK_STOP_LIST_ERROR", "message": str(error)}), 500
 
 
 @app.route("/kiosk-iiko-config")
