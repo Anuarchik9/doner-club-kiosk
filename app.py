@@ -204,16 +204,34 @@ def _menu_price(prices, organization_id):
     return None
 
 
+def _first_image_url(*values):
+    """Return the first usable image URL from iiko menu fields."""
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):
+            for key in ("url", "imageUrl", "buttonImageUrl", "buttonImage"):
+                candidate = value.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    return candidate.strip()
+        if isinstance(value, list):
+            for item in value:
+                candidate = _first_image_url(item)
+                if candidate:
+                    return candidate
+    return None
+
+
 def _normalize_modifier_item(item, organization_id):
     prices = item.get("prices") or []
-    image_url = item.get("buttonImage") or item.get("buttonImageUrl")
+    image_url = _first_image_url(item.get("buttonImage"), item.get("buttonImageUrl"), item.get("imageUrl"), item.get("imageLinks"), item.get("images"))
     restrictions = item.get("restrictions") or {}
 
     if not prices:
         sizes = item.get("itemSizes") or []
         size = next((s for s in sizes if s.get("isDefault")), None) or (sizes[0] if sizes else {})
         prices = size.get("prices") or []
-        image_url = image_url or size.get("buttonImageUrl")
+        image_url = image_url or _first_image_url(size.get("buttonImageUrl"), size.get("buttonImage"), size.get("imageUrl"), size.get("imageLinks"), size.get("images"))
         if not restrictions:
             restrictions = size.get("restrictions") or {}
 
@@ -303,10 +321,19 @@ def normalize_external_menu(menu_data, organization_id):
                     "description": item.get("description") or "",
                     "price": price,
                     "weightGrams": size.get("portionWeightGrams") or 0,
-                    "imageUrl": (
-                        size.get("buttonImageUrl")
-                        or category.get("buttonImageUrl")
-                        or category.get("headerImageUrl")
+                    "imageUrl": _first_image_url(
+                        size.get("buttonImageUrl"),
+                        size.get("buttonImage"),
+                        size.get("imageUrl"),
+                        size.get("imageLinks"),
+                        size.get("images"),
+                        item.get("buttonImageUrl"),
+                        item.get("buttonImage"),
+                        item.get("imageUrl"),
+                        item.get("imageLinks"),
+                        item.get("images"),
+                        category.get("buttonImageUrl"),
+                        category.get("headerImageUrl"),
                     ),
                     "modifierGroups": modifier_groups,
                 })
