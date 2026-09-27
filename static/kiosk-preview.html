@@ -168,9 +168,10 @@
 </div>
 <div id="modalRoot"></div>
 <script>
-var lang='ru', categories=[], products=[], activeCat=null, cart=[], selected=null, menuReady=false, retryTimer=null, customerPhone='', crmWelcomeEligible=false, crmWelcomePercent=0, crmCustomerExists=false, crmLookupReady=false, orderMode=null;
+var lang='ru', categories=[], products=[], activeCat=null, cart=[], selected=null, menuReady=false, retryTimer=null, stopRefreshTimer=null, stoppedProductIds={}, customerPhone='', crmWelcomeEligible=false, crmWelcomePercent=0, crmCustomerExists=false, crmLookupReady=false, orderMode=null;
 var CAT_KZ={'Комбо':'Комбо','Донер':'Донерлер','Донеры':'Донерлер','Бар':'Сусындар','Напитки':'Сусындар','Чаи':'Шай','Сладости':'Тәттілер','Дополнительное':'Қосымша','Дополнительно':'Қосымша','Батоны':'Батондар','Фри':'Фри','Стрипсы':'Стрипстер','Акции':'Науқандар'};
 var MENU_CACHE_KEY='donerclub-kiosk-arai-menu-v1', MENU_CACHE_TTL=10*60*1000;
+var STOP_REFRESH_MS=30*1000;
 var CART_SESSION_KEY='donerclub-kiosk-arai-cart-v1';
 var navScrollLockUntil=0;
 function t(ru,kz){return lang==='ru'?ru:kz}
@@ -202,9 +203,38 @@ function isOrderTypeGroup(group){
   (group.items||[]).forEach(function(item){var k=optionMode(item.name);if(k)kinds[k]=true});
   return !!(kinds.dinein&&kinds.takeaway);
 }
+function isStoppedProductId(id){
+  return !!stoppedProductIds[String(id||'')];
+}
+function availableModifierItems(group){
+  return (group&&group.items||[]).filter(function(item){
+    return !isStoppedProductId(item&&item.id);
+  });
+}
+function productIsAvailable(product){
+  if(!product)return false;
+  if(isStoppedProductId(product.itemId))return false;
+  return (product.modifierGroups||[]).every(function(group){
+    if(isOrderTypeGroup(group))return true;
+    var min=Number(group.minQuantity)||0;
+    return availableModifierItems(group).length>=min;
+  });
+}
 function visibleModifierGroups(product){
   return (product&&product.modifierGroups||[]).filter(function(group){
-    return group.items&&group.items.length&&!isOrderTypeGroup(group);
+    return !isOrderTypeGroup(group)&&availableModifierItems(group).length;
+  }).map(function(group){
+    var copy={};
+    Object.keys(group).forEach(function(key){copy[key]=group[key]});
+    copy.items=availableModifierItems(group);
+    return copy;
+  });
+}
+function visibleMenuCategories(){
+  return categories.filter(function(category){
+    return products.some(function(product){
+      return product.categoryId===category.id&&productIsAvailable(product);
+    });
   });
 }
 function selectedServiceModifier(product){
@@ -429,6 +459,70 @@ async function loadMenu(force){
   }
 }
 
+function sameStopMap(a,b){
+  var ak=Object.keys(a||{}).sort(),bk=Object.keys(b||{}).sort();
+  if(ak.length!==bk.length)return false;
+  for(var i=0;i<ak.length;i++){if(ak[i]!==bk[i])return false;}
+  return true;
+}
+function removeStoppedFromCart(){
+  var before=cart.length;
+  cart=cart.filter(function(line){
+    var itemId=line.itemId;
+    if(!itemId){
+      var product=products.find(function(p){return p.id===line.productId});
+      itemId=product&&product.itemId;
+    }
+    if(isStoppedProductId(itemId))return false;
+    return !(line.modifierIds||[]).some(isStoppedProductId);
+  });
+  if(cart.length!==before){
+    persistCartSession();
+    updateCart();
+    refreshCardActions();
+    return true;
+  }
+  return false;
+}
+function applyStopListData(data){
+  var next={};
+  (data&&data.stoppedProductIds||[]).forEach(function(id){next[String(id)]=true});
+  var changed=!sameStopMap(stoppedProductIds,next);
+  stoppedProductIds=next;
+  var cartChanged=removeStoppedFromCart();
+
+  if(selected&&(!productIsAvailable(selected))){
+    closeModal();
+  }else if(changed&&document.querySelector('#modalRoot .productModal')){
+    closeModal();
+  }
+
+  if(changed||cartChanged){
+    if(activeCat!=='all'){
+      var activeStillVisible=visibleMenuCategories().some(function(c){return c.id===activeCat});
+      if(!activeStillVisible)activeCat='all';
+    }
+    paint();
+  }
+}
+function scheduleStopRefresh(){
+  if(stopRefreshTimer){clearTimeout(stopRefreshTimer);stopRefreshTimer=null}
+  stopRefreshTimer=setTimeout(loadStopList,STOP_REFRESH_MS);
+}
+async function loadStopList(){
+  try{
+    var response=await fetch('/kiosk-stop-list?point=Arai',{cache:'no-store'});
+    var data=await response.json();
+    if(!response.ok||!data.success)throw data;
+    applyStopListData(data);
+  }catch(error){
+    // Keep the last known stop list so a temporary iiko/network issue
+    // never makes unavailable products reappear.
+  }finally{
+    scheduleStopRefresh();
+  }
+}
+
 function productQty(p){
   return cart.reduce(function(sum,x){
     return sum+(x.productId===p.id?x.q:0);
@@ -572,8 +666,9 @@ function paint(){
   document.getElementById('title').textContent=t('Все меню','Барлық мәзір');
 
   var cats=document.getElementById('cats');
+  var menuCategories=visibleMenuCategories();
   var allButton='<button class="cat '+(activeCat==='all'?'on':'')+'" data-cat="all">'+t('Все меню','Барлық мәзір')+'</button>';
-  cats.innerHTML=allButton+categories.map(function(c){
+  cats.innerHTML=allButton+menuCategories.map(function(c){
     return '<button class="cat '+(c.id===activeCat?'on':'')+'" data-cat="'+esc(c.id)+'">'+esc(categoryName(c))+'</button>';
   }).join('');
   cats.querySelectorAll('[data-cat]').forEach(function(b){
@@ -591,8 +686,8 @@ function paintGrid(){
   var root=document.getElementById('grid');
   root.className='menuAll';
 
-  var sections=categories.map(function(category){
-    var list=products.filter(function(p){return p.categoryId===category.id});
+  var sections=visibleMenuCategories().map(function(category){
+    var list=products.filter(function(p){return p.categoryId===category.id&&productIsAvailable(p)});
     if(!list.length)return '';
     return '<section class="menuSection" data-menu-section="'+esc(category.id)+'"><h2>'+esc(categoryName(category))+'</h2><div class="grid">'+list.map(productCard).join('')+'</div></section>';
   }).join('');
@@ -604,7 +699,7 @@ function hasProductModifiers(p){
   return visibleModifierGroups(p).some(function(g){return g.items&&g.items.length});
 }
 function handleProduct(p){
-  if(!p)return;
+  if(!p||!productIsAvailable(p))return;
   if(!orderMode){resetOrderMode();return;}
   if(hasProductModifiers(p)){
     openProduct(p);
@@ -676,13 +771,13 @@ function enableBackdropClose(){
 }
 function modalProductList(){
   var ordered=[];
-  categories.forEach(function(category){
-    products.filter(function(p){return p.categoryId===category.id}).forEach(function(p){
+  visibleMenuCategories().forEach(function(category){
+    products.filter(function(p){return p.categoryId===category.id&&productIsAvailable(p)}).forEach(function(p){
       if(!ordered.some(function(x){return x.id===p.id}))ordered.push(p);
     });
   });
   products.forEach(function(p){
-    if(!ordered.some(function(x){return x.id===p.id}))ordered.push(p);
+    if(productIsAvailable(p)&&!ordered.some(function(x){return x.id===p.id}))ordered.push(p);
   });
   return ordered;
 }
@@ -857,12 +952,12 @@ function recommendedProducts(){
   });
 
   var pool=products.filter(function(p){
-    return !inCart[p.id]&&preferredIds[p.categoryId];
+    return productIsAvailable(p)&&!inCart[p.id]&&preferredIds[p.categoryId];
   });
 
   if(pool.length<9){
     products.forEach(function(p){
-      if(!inCart[p.id]&&pool.indexOf(p)<0)pool.push(p);
+      if(productIsAvailable(p)&&!inCart[p.id]&&pool.indexOf(p)<0)pool.push(p);
     });
   }
 
@@ -1330,6 +1425,8 @@ document.getElementById('modeTakeaway').onclick=function(){chooseOrderMode('take
 document.getElementById('serviceModeBadge').onclick=function(){resetOrderMode()};
 
 restoreCartSession();
-paint();if(!pushedOnOpen)loadMenu();
+paint();
+loadStopList();
+if(!pushedOnOpen)loadMenu();
 </script>
 </body></html>
