@@ -602,10 +602,34 @@ function animateAdded(productId){
     setTimeout(function(){el.classList.remove('cartPulse')},600);
   });
 }
+function keepActiveCategoryVisible(){
+  var cats=document.getElementById('cats');
+  if(!cats)return;
+  var active=cats.querySelector('[data-cat].on');
+  if(!active)return;
+
+  var horizontal=cats.scrollWidth>cats.clientWidth+4;
+  if(horizontal){
+    var target=active.offsetLeft+(active.offsetWidth/2)-(cats.clientWidth/2);
+    var max=Math.max(0,cats.scrollWidth-cats.clientWidth);
+    target=Math.max(0,Math.min(max,target));
+    cats.scrollTo({left:target,behavior:'smooth'});
+    return;
+  }
+
+  var vertical=cats.scrollHeight>cats.clientHeight+4;
+  if(vertical){
+    var targetTop=active.offsetTop+(active.offsetHeight/2)-(cats.clientHeight/2);
+    var maxTop=Math.max(0,cats.scrollHeight-cats.clientHeight);
+    targetTop=Math.max(0,Math.min(maxTop,targetTop));
+    cats.scrollTo({top:targetTop,behavior:'smooth'});
+  }
+}
 function updateNavActive(){
   document.querySelectorAll('#cats [data-cat]').forEach(function(b){
     b.classList.toggle('on', b.dataset.cat===activeCat);
   });
+  keepActiveCategoryVisible();
 }
 function scrollToCategory(categoryId){
   var content=document.querySelector('.content');
@@ -633,7 +657,8 @@ function scrollToCategory(categoryId){
 }
 function syncActiveCategoryFromScroll(){
   var content=document.querySelector('.content');
-  if(!content||!categories.length)return;
+  var menuCategories=visibleMenuCategories();
+  if(!content||!menuCategories.length)return;
   if(Date.now()<navScrollLockUntil)return;
 
   if(content.scrollTop<70){
@@ -644,9 +669,20 @@ function syncActiveCategoryFromScroll(){
     return;
   }
 
+  // At the very bottom the final section can be too short for its heading
+  // to cross the normal activation line, so select it explicitly.
+  if(content.scrollTop+content.clientHeight>=content.scrollHeight-28){
+    var last=menuCategories[menuCategories.length-1];
+    if(last&&activeCat!==last.id){
+      activeCat=last.id;
+      updateNavActive();
+    }
+    return;
+  }
+
   var contentTop=content.getBoundingClientRect().top;
   var current=null;
-  categories.forEach(function(category){
+  menuCategories.forEach(function(category){
     var section=document.querySelector('[data-menu-section="'+CSS.escape(category.id)+'"]');
     if(!section)return;
     var top=section.getBoundingClientRect().top-contentTop;
