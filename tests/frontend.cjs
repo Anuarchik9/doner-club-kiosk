@@ -1,0 +1,25 @@
+// Offline logic tests. No requests to a bank, CRM or iiko.
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const html=fs.readFileSync(require('node:path').join(__dirname,'../static/kiosk-preview.html'),'utf8');
+const code=html.match(/<script>([\s\S]*?)<\/script>/)[1];
+const nodes={modalRoot:{innerHTML:''}};
+const c=vm.createContext({console,sessionStorage:{setItem(){}},document:{getElementById:id=>nodes[id]||null},clearTimeout(){}});
+vm.runInContext(code.slice(0,code.lastIndexOf('enableGlobalMenuWheel();')),c);
+const run=s=>vm.runInContext(s,c);
+run(`products=[{id:'p',itemId:'p',price:1000,modifierGroups:[{id:'service',name:'Тип заказа',items:[{id:'hall',name:'- зале',price:0},{id:'take',name:'- с собой',price:50}]},{id:'extras',name:'Добавки',minQuantity:1,items:[{id:'cheese',name:'Сыр',price:200}]}]}];orderMode='takeaway';cart=[{productId:'p',q:1,unitPrice:1200,modifierIds:['hall','cheese'],modifierGroupIds:['service','extras'],mods:['- зале','Сыр']}];`);
+run('applyOrderModeToExistingCart()');
+assert.equal(run('cart[0].unitPrice'),1250);
+assert.equal(run('cart[0].modifierIds.join()'),'cheese,take');
+run("orderMode='dinein';applyOrderModeToExistingCart()");
+assert.equal(run('cart[0].unitPrice'),1200);
+assert.equal(run('visibleModifierGroups(products[0]).length'),1);
+run("stoppedProductIds={hall:true}");
+assert.equal(run('productIsAvailable(products[0])'),false);
+assert.equal(run('selectedServiceModifier(products[0])'),null);
+run("orderMode='takeaway'");
+assert.equal(run('productIsAvailable(products[0])'),true);
+run('stoppedProductIds={cheese:true}');
+assert.equal(run('productIsAvailable(products[0])'),false);
+assert.ok(html.includes('Kaspi QR')&&html.includes('Kaspi ·'));
+assert.ok(!html.includes('ForteBank'));
+console.log('Frontend checks passed: service selection/prices, stop lists, hidden modifiers, Kaspi choices.');

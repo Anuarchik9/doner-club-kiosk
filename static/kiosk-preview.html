@@ -215,7 +215,7 @@ function productIsAvailable(product){
   if(!product)return false;
   if(isStoppedProductId(product.itemId))return false;
   return (product.modifierGroups||[]).every(function(group){
-    if(isOrderTypeGroup(group))return true;
+    if(isOrderTypeGroup(group))return !orderMode||availableModifierItems(group).some(function(item){return optionMode(item.name)===orderMode});
     var min=Number(group.minQuantity)||0;
     return availableModifierItems(group).length>=min;
   });
@@ -241,7 +241,7 @@ function selectedServiceModifier(product){
   if(!orderMode||!product)return null;
   var group=(product.modifierGroups||[]).find(isOrderTypeGroup);
   if(!group)return null;
-  var item=(group.items||[]).find(function(modifier){return optionMode(modifier.name)===orderMode});
+  var item=availableModifierItems(group).find(function(modifier){return optionMode(modifier.name)===orderMode});
   if(!item)return null;
   return {
     id:item.id,
@@ -276,6 +276,12 @@ function applyOrderModeToExistingCart(){
     });
     appendServiceModifier(product,keepMods,keepIds,keepGroups);
     line.mods=keepMods;line.modifierIds=keepIds;line.modifierGroupIds=keepGroups;
+    line.basePrice=Number(product.price)||0;
+    line.unitPrice=line.basePrice+keepIds.reduce(function(sum,id){
+      var modifier=null;
+      (product.modifierGroups||[]).some(function(group){modifier=(group.items||[]).find(function(item){return item.id===id});return !!modifier});
+      return sum+Number(modifier&&modifier.price||0);
+    },0);
     line.key=line.productId+'|'+keepIds.slice().sort().join(',');
   });
   persistCartSession();
@@ -310,6 +316,7 @@ function chooseOrderMode(mode){
   if(content)content.scrollTop=0;
 }
 function resetOrderMode(){
+  closeModal();
   orderMode=null;
   paintOrderModeScreen();
 }
@@ -490,6 +497,7 @@ function applyStopListData(data){
   var changed=!sameStopMap(stoppedProductIds,next);
   stoppedProductIds=next;
   var cartChanged=removeStoppedFromCart();
+  if(cartChanged)closeModal();
 
   if(selected&&(!productIsAvailable(selected))){
     closeModal();
@@ -906,7 +914,9 @@ function openProduct(p,direction){
 }
 function updateProductButton(){
   var extra=0;document.querySelectorAll('.modInput:checked').forEach(function(i){extra+=Number(i.dataset.price||0)});
-  var valid=true;
+  var service=selectedServiceModifier(selected);
+  extra+=Number(service&&service.price||0);
+  var valid=productIsAvailable(selected);
   visibleModifierGroups(selected).forEach(function(g,gi){
     var inputs=Array.from(document.querySelectorAll('.modInput[name="g'+gi+'"]'));
     var quantity=inputs.filter(function(i){return i.checked}).length;
@@ -1372,6 +1382,7 @@ function openPhoneEntry(){
     try{
       var response=await fetch('/kiosk-crm-customer?phone='+encodeURIComponent(customerPhone),{cache:'no-store'});
       var data=await response.json();
+      if(document.getElementById('phoneContinue')!==button||customerPhone!=='+7'+digits)return;
       if(!response.ok||!data.success)throw data;
 
       crmCustomerExists=!!data.exists;
@@ -1380,6 +1391,7 @@ function openPhoneEntry(){
       crmWelcomePercent=Number((data.welcomeDiscount&&data.welcomeDiscount.percent)||0);
       openPay();
     }catch(error){
+      if(document.getElementById('phoneContinue')!==button||customerPhone!=='+7'+digits)return;
       resetCrmDiscount();
       button.disabled=false;
       button.textContent=t('Продолжить','Жалғастыру');
@@ -1411,7 +1423,7 @@ function openPay(){
     (discount>0?'<div style="display:flex;justify-content:space-between;gap:20px;color:#16843a;margin-top:6px"><span>'+t('Скидка '+crmWelcomePercent+'%','Жеңілдік '+crmWelcomePercent+'%')+'</span><b>− '+money(discount)+'</b></div>':'')+
     '<div style="display:flex;justify-content:space-between;gap:20px;font-size:18px;margin-top:9px;padding-top:9px;border-top:1px solid #e7e2dc"><b>'+t('К оплате','Төлемге')+'</b><b>'+money(finalTotal)+'</b></div>'+
     '</div>';
-  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal"><h2>'+t('Способ оплаты','Төлем тәсілі')+'</h2>'+phoneNote+priceSummary+'<div class="paygrid"><button class="pay payChoice"><div style="font-size:42px">💳</div><b>ForteBank</b><span>'+t('Банковская карта / Apple Pay','Банк картасы / Apple Pay')+'</span></button><button class="pay payChoice"><div style="font-size:42px">▦</div><b>'+t('Единый QR','Бірыңғай QR')+'</b><span>'+t('QR на сумму '+money(finalTotal),'QR сомасы '+money(finalTotal))+'</span></button></div><div class="actions"><button class="secondary" id="backCart">'+t('Назад','Артқа')+'</button></div></div></div>';
+  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal"><h2>'+t('Способ оплаты','Төлем тәсілі')+'</h2><p class=lead>'+t('Тестовый режим: оплата Kaspi пока не подключена.','Тест режимі: Kaspi төлемі әлі қосылмаған.')+'</p>'+phoneNote+priceSummary+'<div class="paygrid"><button class="pay payChoice"><div style="font-size:42px">💳</div><b>Kaspi · '+t('Картой','Картамен')+'</b><span>'+t('Оплата банковской картой','Банк картасымен төлеу')+'</span></button><button class="pay payChoice"><div style="font-size:42px">▦</div><b>Kaspi QR</b><span>'+t('QR на сумму '+money(finalTotal),'QR сомасы '+money(finalTotal))+'</span></button></div><div class="actions"><button class="secondary" id="backCart">'+t('Назад','Артқа')+'</button></div></div></div>';
   enableBackdropClose();
   document.getElementById('backCart').onclick=openPhoneEntry;
   document.querySelectorAll('.payChoice').forEach(function(b){b.onclick=showSuccess});

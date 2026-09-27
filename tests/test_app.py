@@ -140,6 +140,21 @@ class KioskTests(unittest.TestCase):
                 self.assertIsNone(kiosk._menu_price([{'organizationId': 'org', 'price': value}], 'org'))
         self.assertEqual(kiosk._menu_price([{'organizationId': 'org', 'price': 0}], 'org'), 0)
 
+    def test_nonfinite_stop_balance(self):
+        for value in ('NaN', 'Infinity', '-Infinity'):
+            ids, items = kiosk.normalize_stop_list({'terminalGroupStopLists': [
+                {'organizationId': 'org', 'items': [{'productId': 'p', 'balance': value}]}]}, 'org')
+            self.assertEqual(ids, ['p'])
+            self.assertIsNone(items[0]['balance'])
+
+    def test_crm_malformed_response(self):
+        with patch.object(kiosk, 'CRM_BASE_URL', 'https://crm.example'), patch.object(kiosk, 'CRM_API_KEY', 'test'), patch.object(kiosk.requests, 'get') as get:
+            for payload in (None, [], 'bad'):
+                get.return_value = Mock(ok=True, json=Mock(return_value=payload))
+                self.assertEqual(self.client.get('/kiosk-crm-customer?phone=7771234567').status_code, 502)
+            get.return_value = Mock(ok=True, json=Mock(side_effect=ValueError))
+            self.assertEqual(self.client.get('/kiosk-crm-customer?phone=7771234567').status_code, 502)
+
 
 if __name__ == '__main__':
     unittest.main()

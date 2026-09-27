@@ -221,6 +221,8 @@ def normalize_stop_list(payload, organization_id):
                 balance = float(raw_balance) if raw_balance is not None else None
             except (TypeError, ValueError, OverflowError):
                 balance = None
+            if balance is not None and not math.isfinite(balance):
+                balance = None
 
             stopped = balance is None or balance <= 0
             if stopped:
@@ -1148,7 +1150,9 @@ def kiosk_crm_customer():
     try:
         payload = response.json()
     except ValueError:
-        payload = {"error": response.text[:1000]}
+        return jsonify(success=False, code="CRM_INVALID_RESPONSE", message="CRM returned invalid JSON"), 502
+    if not isinstance(payload, dict):
+        return jsonify(success=False, code="CRM_INVALID_RESPONSE", message="CRM returned an invalid response"), 502
 
     if not response.ok:
         return jsonify(
