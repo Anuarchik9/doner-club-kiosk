@@ -1127,6 +1127,61 @@ def kiosk_test_paid_order():
         return jsonify({"success": False, "code": "KIOSK_PAID_TEST_ORDER_ERROR", "message": str(error)}), 500
 
 
+@app.post("/kiosk-crm-register")
+def kiosk_crm_register():
+    payload = request.get_json(silent=True) or {}
+    phone = str(payload.get("phone") or "").strip()
+    if not phone:
+        return jsonify(success=False, code="PHONE_REQUIRED", message="phone is required"), 400
+    if not CRM_BASE_URL or not CRM_API_KEY:
+        return jsonify(success=False, code="CRM_NOT_CONFIGURED", message="CRM connection is not configured"), 503
+
+    response = None
+    last_error = None
+    retryable_statuses = {429, 502, 503, 504}
+
+    for attempt in range(4):
+        try:
+            response = requests.post(
+                f"{CRM_BASE_URL}/api/v1/customers/register",
+                json={"phone": phone, "source": "KIOSK", "locationCode": "ARAI"},
+                headers={"X-API-Key": CRM_API_KEY, "Content-Type": "application/json"},
+                timeout=(4, 12),
+            )
+            if response.status_code not in retryable_statuses:
+                break
+            last_error = f"CRM HTTP {response.status_code}"
+        except requests.RequestException as error:
+            last_error = str(error)
+            response = None
+
+        if attempt < 3:
+            time.sleep(0.8 + attempt * 0.8)
+
+    if response is None:
+        return jsonify(success=False, code="CRM_UNAVAILABLE", message=last_error or "CRM unavailable"), 502
+
+    try:
+        data = response.json()
+    except ValueError:
+        return jsonify(success=False, code="CRM_INVALID_RESPONSE", message="CRM returned invalid JSON"), 502
+
+    if not response.ok or not isinstance(data, dict) or not data.get("ok"):
+        return jsonify(
+            success=False,
+            code="CRM_REGISTER_FAILED",
+            statusCode=response.status_code,
+            details=data if isinstance(data, dict) else None,
+        ), 502 if response.status_code >= 500 else response.status_code
+
+    return jsonify(
+        success=True,
+        created=bool(data.get("created")),
+        customerId=data.get("customerId"),
+        phone=data.get("phone"),
+    )
+
+
 @app.route("/kiosk-crm-customer", methods=["GET"])
 def kiosk_crm_customer():
     phone = str(request.args.get("phone") or "").strip()
