@@ -1135,17 +1135,39 @@ def kiosk_crm_customer():
     if not CRM_BASE_URL or not CRM_API_KEY:
         return jsonify(success=False, code="CRM_NOT_CONFIGURED", message="CRM connection is not configured"), 503
 
-    try:
-        response = requests.get(
-            f"{CRM_BASE_URL}/api/v1/customers/lookup",
-            params={"phone": phone},
-            headers={"X-API-Key": CRM_API_KEY},
-            timeout=10,
-        )
-    except requests.Timeout:
-        return jsonify(success=False, code="CRM_TIMEOUT", message="CRM did not answer in time"), 504
-    except requests.RequestException as error:
-        return jsonify(success=False, code="CRM_UNAVAILABLE", message=str(error)), 502
+    response = None
+    last_error = None
+    retryable_statuses = {429, 502, 503, 504}
+
+    # The CRM runs on a free Render service and may need time to wake up.
+    # Retry the same idempotent lookup before showing an error to the guest.
+    for attempt in range(3):
+        try:
+            response = requests.get(
+                f"{CRM_BASE_URL}/api/v1/customers/lookup",
+                params={"phone": phone},
+                headers={"X-API-Key": CRM_API_KEY},
+                timeout=(5, 15),
+            )
+            if response.status_code not in retryable_statuses:
+                break
+            last_error = f"CRM HTTP {response.status_code}"
+        except requests.Timeout:
+            last_error = "CRM did not answer in time"
+            response = None
+        except requests.RequestException as error:
+            last_error = str(error)
+            response = None
+
+        if attempt < 2:
+            time.sleep(1.5 + attempt)
+
+    if response is None:
+        return jsonify(
+            success=False,
+            code="CRM_UNAVAILABLE",
+            message=last_error or "CRM is temporarily unavailable",
+        ), 502
 
     try:
         payload = response.json()
