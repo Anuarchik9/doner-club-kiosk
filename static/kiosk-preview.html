@@ -1331,7 +1331,7 @@ function openPhoneEntry(){
   document.getElementById('modalRoot').innerHTML=
     '<div class="overlay"><div class="modal phoneModal">'+
       '<h2>'+t('Ваш номер телефона','Телефон нөміріңіз')+'</h2>'+
-      '<div class="phoneGift"><div class="phoneGiftIcon">₸</div><div>'+t('Введите номер телефона — проверим скидку 5% на первый заказ через киоск.','Телефон нөміріңізді енгізіңіз — киоск арқылы алғашқы тапсырысқа 5% жеңілдікті тексереміз.')+'</div></div>'+
+      '<div class="phoneGift"><div class="phoneGiftIcon">₸</div><div>'+t('Введите номер телефона и получите скидку 5% на первый заказ!','Телефон нөміріңізді енгізіп, алғашқы тапсырысқа 5% жеңілдік алыңыз!')+'</div></div>'+
       '<div class="phoneInputWrap"><div class="phoneInputLabel">'+t('Номер телефона','Телефон нөмірі')+'</div><div id="phoneDisplay" class="phoneDisplay">+7</div><div id="phoneHint" class="phoneHint"></div></div>'+
       '<div class="phoneKeypad">'+
         ['1','2','3','4','5','6','7','8','9','','0','⌫'].map(function(key){return key?'<button class="phoneKey'+(key==='⌫'?' delete':'')+'" data-phone-key="'+key+'">'+key+'</button>':'<div></div>'}).join('')+
@@ -1359,62 +1359,35 @@ function openPhoneEntry(){
     resetCrmDiscount();
     openPay();
   };
-  document.getElementById('phoneContinue').onclick=async function(){
+  document.getElementById('phoneContinue').onclick=function(){
     var digits=phoneDigitsOnly(customerPhone);
     var hint=document.getElementById('phoneHint');
-    var button=document.getElementById('phoneContinue');
     if(digits.length!==10){
       if(hint){
         hint.className='phoneHint error';
-        hint.textContent=t('Проверьте номер телефона. Нужно 10 цифр после +7.','Телефон нөмірін тексеріңіз. +7-ден кейін 10 сан болуы керек.');
+        hint.textContent=t('Введите 10 цифр номера после +7.','+7-ден кейін телефон нөмірінің 10 санын енгізіңіз.');
       }
       return;
     }
 
     customerPhone='+7'+digits;
-    button.disabled=true;
-    button.textContent=t('Проверяю скидку…','Жеңілдік тексерілуде…');
-    if(hint){
-      hint.className='phoneHint';
-      hint.textContent=t('Проверяем номер в Doner Club CRM…','Нөмір Doner Club CRM-де тексерілуде…');
-    }
 
-    var slowHintTimer=setTimeout(function(){
-      if(document.getElementById('phoneContinue')===button&&button.disabled&&hint){
-        hint.className='phoneHint';
-        hint.textContent=t(
-          'Подключаемся к CRM… это может занять до 30 секунд.',
-          'CRM-ге қосылып жатырмыз… бұл 30 секундқа дейін созылуы мүмкін.'
-        );
-      }
-    },7000);
+    // Номер сразу даёт приветственную скидку и не задерживает гостя.
+    crmCustomerExists=false;
+    crmLookupReady=true;
+    crmWelcomeEligible=true;
+    crmWelcomePercent=5;
 
-    try{
-      var response=await fetch('/kiosk-crm-customer?phone='+encodeURIComponent(customerPhone),{cache:'no-store'});
-      var data=await response.json();
-      clearTimeout(slowHintTimer);
-      if(document.getElementById('phoneContinue')!==button||customerPhone!=='+7'+digits)return;
-      if(!response.ok||!data.success)throw data;
+    // Регистрация идёт в фоне: новый номер создаётся в CRM без имени.
+    fetch('/kiosk-crm-register',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({phone:customerPhone}),
+      cache:'no-store',
+      keepalive:true
+    }).catch(function(){});
 
-      crmCustomerExists=!!data.exists;
-      crmLookupReady=true;
-      crmWelcomeEligible=!!(data.welcomeDiscount&&data.welcomeDiscount.eligible);
-      crmWelcomePercent=Number((data.welcomeDiscount&&data.welcomeDiscount.percent)||0);
-      openPay();
-    }catch(error){
-      clearTimeout(slowHintTimer);
-      if(document.getElementById('phoneContinue')!==button||customerPhone!=='+7'+digits)return;
-      resetCrmDiscount();
-      button.disabled=false;
-      button.textContent=t('Продолжить','Жалғастыру');
-      if(hint){
-        hint.className='phoneHint error';
-        hint.textContent=t(
-          'CRM временно не ответил. Попробуйте ещё раз или продолжите без номера.',
-          'CRM уақытша жауап бермеді. Қайта көріңіз немесе нөмірсіз жалғастырыңыз.'
-        );
-      }
-    }
+    openPay();
   };
   document.getElementById('phoneBack').onclick=openCart;
 }
@@ -1423,10 +1396,8 @@ function openPay(){
   var finalTotal=payableTotal();
   var phoneNote=customerPhone
     ? '<div class="setup" style="margin-bottom:14px">'+t('Номер клиента: ','Клиент нөмірі: ')+'<b>'+esc(formattedPhone())+'</b>'+
-      (crmLookupReady
-        ? (crmWelcomeEligible
-          ? '<br><span style="color:#16843a;font-weight:900">'+t('Скидка '+crmWelcomePercent+'% на первый заказ применена.','Алғашқы тапсырысқа '+crmWelcomePercent+'% жеңілдік қолданылды.')+'</span>'
-          : '<br><span style="color:#777">'+t('Приветственная скидка 5% по этому номеру уже использована.','Бұл нөмір бойынша 5% алғашқы жеңілдік бұрын қолданылған.')+'</span>')
+      (crmLookupReady&&crmWelcomeEligible
+        ? '<br><span style="color:#16843a;font-weight:900">'+t('Скидка '+crmWelcomePercent+'% на первый заказ применена.','Алғашқы тапсырысқа '+crmWelcomePercent+'% жеңілдік қолданылды.')+'</span>'
         : '')+
       '</div>'
     : '';
