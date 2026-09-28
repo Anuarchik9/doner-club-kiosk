@@ -1379,9 +1379,20 @@ function openPhoneEntry(){
       hint.textContent=t('Проверяем номер в Doner Club CRM…','Нөмір Doner Club CRM-де тексерілуде…');
     }
 
+    var slowHintTimer=setTimeout(function(){
+      if(document.getElementById('phoneContinue')===button&&button.disabled&&hint){
+        hint.className='phoneHint';
+        hint.textContent=t(
+          'Подключаемся к CRM… это может занять до 30 секунд.',
+          'CRM-ге қосылып жатырмыз… бұл 30 секундқа дейін созылуы мүмкін.'
+        );
+      }
+    },7000);
+
     try{
       var response=await fetch('/kiosk-crm-customer?phone='+encodeURIComponent(customerPhone),{cache:'no-store'});
       var data=await response.json();
+      clearTimeout(slowHintTimer);
       if(document.getElementById('phoneContinue')!==button||customerPhone!=='+7'+digits)return;
       if(!response.ok||!data.success)throw data;
 
@@ -1391,6 +1402,7 @@ function openPhoneEntry(){
       crmWelcomePercent=Number((data.welcomeDiscount&&data.welcomeDiscount.percent)||0);
       openPay();
     }catch(error){
+      clearTimeout(slowHintTimer);
       if(document.getElementById('phoneContinue')!==button||customerPhone!=='+7'+digits)return;
       resetCrmDiscount();
       button.disabled=false;
@@ -1398,8 +1410,8 @@ function openPhoneEntry(){
       if(hint){
         hint.className='phoneHint error';
         hint.textContent=t(
-          'Не удалось проверить скидку. Попробуйте ещё раз или продолжите без номера.',
-          'Жеңілдікті тексеру мүмкін болмады. Қайта көріңіз немесе нөмірсіз жалғастырыңыз.'
+          'CRM временно не ответил. Попробуйте ещё раз или продолжите без номера.',
+          'CRM уақытша жауап бермеді. Қайта көріңіз немесе нөмірсіз жалғастырыңыз.'
         );
       }
     }
