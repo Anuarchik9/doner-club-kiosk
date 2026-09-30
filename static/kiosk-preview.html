@@ -175,23 +175,23 @@ var CAT_KZ={'Комбо':'Комбо','Донер':'Донерлер','Доне�
 
 function kioskContextFromPath(){
   var path=String(window.location.pathname||'/').replace(/\/+$/,'').toLowerCase();
-  if(path==='/respublica'){
+  if(path==='/aray'){
     return {
-      key:'respublica',
-      point:'RESPUBLIKA',
-      displayRu:'Республика',
-      displayKz:'Республика',
-      eyebrow:'DONER CLUB · РЕСПУБЛИКА',
-      menu:'__AUTO__'
+      key:'arai',
+      point:'ARAI',
+      displayRu:'Арай',
+      displayKz:'Арай',
+      eyebrow:'DONER CLUB · АРАЙ',
+      menu:'Kiosk Арай'
     };
   }
   return {
-    key:'arai',
-    point:'ARAI',
-    displayRu:'Арай',
-    displayKz:'Арай',
-    eyebrow:'DONER CLUB · АРАЙ',
-    menu:'Kiosk Арай'
+    key:'respublica',
+    point:'RESPUBLIKA',
+    displayRu:'Республика',
+    displayKz:'Республика',
+    eyebrow:'DONER CLUB · РЕСПУБЛИКА',
+    menu:'__AUTO__'
   };
 }
 var KIOSK_CONTEXT=kioskContextFromPath();
