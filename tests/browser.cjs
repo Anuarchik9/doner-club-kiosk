@@ -17,7 +17,7 @@ const assert = require('node:assert/strict');
     {id: 'fries', itemId: 'fries', categoryId: 'extra', name: 'Фри', price: 500, modifierGroups: []}
   ]};
   await page.route('**/kiosk-menu?*', route => route.fulfill({json: menu}));
-  await page.route('**/kiosk-stop-list?*', route => route.fulfill({json:{success:true,stoppedProductIds:[]}}));
+  await page.route('**/kiosk-stop-list?*', route => route.fulfill({json:{success:true,stoppedProductIds:[],location:{acceptsOrders:true,pickupMinutes:20}}}));
   await page.route('**/kiosk-crm-customer?*', route => route.fulfill({json:{success:true,exists:false,welcomeDiscount:{eligible:true,percent:5}}}));
   await page.goto(process.env.KIOSK_URL || 'http://127.0.0.1:10000');
   await page.locator('#modeDineIn').click();

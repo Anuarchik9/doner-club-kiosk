@@ -5,8 +5,47 @@ import time
 
 import requests
 from flask import Flask, jsonify, request
+from availability import AvailabilityUnavailable, crm_state, needs_catalog, catalog_stop_ids
 
 app = Flask(__name__)
+
+
+@app.errorhandler(AvailabilityUnavailable)
+def availability_unavailable(error):
+    response = jsonify(success=False, code="AVAILABILITY_UNAVAILABLE", message=str(error))
+    response.headers["Cache-Control"] = "no-store"
+    return response, 503
+
+
+def combined_availability(department):
+    organization_id = department["organizationId"]
+    code = str(department.get("code") or "").strip().upper()
+    location, manual_codes = crm_state(CRM_BASE_URL, CRM_API_KEY, code)
+    try:
+        payload = get_stop_lists(organization_id)
+        if not isinstance(payload, dict) or not isinstance(payload.get("terminalGroupStopLists"), list):
+            raise ValueError("Incomplete iiko stop list")
+        stopped, items = normalize_stop_list(payload, organization_id)
+        merged = {str(value).casefold() for value in stopped} | manual_codes
+        if needs_catalog(manual_codes):
+            menus = get_external_menus(organization_id)
+            for menu in menus.get("externalMenus", []):
+                merged.update(catalog_stop_ids(get_external_menu_by_id(menu["id"], organization_id), manual_codes))
+        return sorted(merged), items, location
+    except (requests.RequestException, ValueError, TypeError, KeyError, ConfigurationError) as error:
+        raise AvailabilityUnavailable("Не удалось проверить стоп-лист. Попробуйте ещё раз или обратитесь к кассиру.") from error
+
+
+def check_order_availability(validated, order_items):
+    stopped, _, location = combined_availability(validated["department"])
+    if not location["acceptsOrders"]:
+        return {"success": False, "code": "POINT_CLOSED", "message": "Приём заказов временно остановлен. Обратитесь к кассиру."}
+    ids = {str(item["productId"]).casefold() for item in order_items}
+    ids.update(str(mod["productId"]).casefold() for item in order_items for mod in item.get("modifiers", []))
+    blocked = sorted(ids.intersection(stopped))
+    if blocked:
+        return {"success": False, "code": "PRODUCT_STOPPED", "message": "Некоторые позиции больше недоступны. Обновите корзину.", "stoppedProductIds": blocked}
+    return None
 
 SITE_ORIGINS = {
     "https://doner-club-site.onrender.com",
@@ -733,12 +772,12 @@ def kiosk_stop_list():
             }), 404
 
         organization_id = department["organizationId"]
-        payload = get_stop_lists(organization_id)
-        stopped_product_ids, items = normalize_stop_list(payload, organization_id)
+        stopped_product_ids, items, location = combined_availability(department)
 
         response = jsonify({
             "success": True,
-            "source": "iikoCloud stop list",
+            "source": "iikoCloud + CRM",
+            "location": location,
             "point": {
                 "code": department.get("code"),
                 "name": department.get("name"),
@@ -751,6 +790,8 @@ def kiosk_stop_list():
         response.headers["Cache-Control"] = "no-store"
         return response
 
+    except AvailabilityUnavailable:
+        raise
     except ConfigurationError as error:
         return jsonify(success=False, code="KIOSK_API_NOT_CONFIGURED", message=str(error)), 503
     except requests.Timeout:
@@ -872,6 +913,10 @@ def kiosk_test_order():
         if error_payload:
             return jsonify(error_payload), status_code
 
+        rejection = check_order_availability(validated, order_items)
+        if rejection:
+            return jsonify(rejection), 409
+
         organization_id = validated["organizationId"]
         payload = {
             "organizationId": organization_id,
@@ -924,6 +969,8 @@ def kiosk_test_order():
             "iiko": result,
         })
 
+    except AvailabilityUnavailable:
+        raise
     except ConfigurationError as error:
         return jsonify(success=False, code="KIOSK_API_NOT_CONFIGURED", message=str(error)), 503
     except requests.Timeout:
@@ -990,6 +1037,10 @@ def kiosk_test_paid_order():
         )
         if error_payload:
             return jsonify(error_payload), status_code
+
+        rejection = check_order_availability(validated, order_items)
+        if rejection:
+            return jsonify(rejection), 409
 
         organization_id = validated["organizationId"]
         payment_type_id = os.environ.get(
@@ -1111,6 +1162,8 @@ def kiosk_test_paid_order():
         }), (200 if close_status and close_status.get("state") == "Success"
              else 502 if close_status and close_status.get("state") == "Error" else 202)
 
+    except AvailabilityUnavailable:
+        raise
     except ConfigurationError as error:
         return jsonify(success=False, code="KIOSK_API_NOT_CONFIGURED", message=str(error)), 503
     except requests.Timeout:

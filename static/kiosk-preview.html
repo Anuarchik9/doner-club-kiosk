@@ -163,11 +163,13 @@
   <div class="orderbar">
     <div class="sumwrap"><div id="count" class="count">Корзина пуста</div><div id="sum" class="sum">0 ₸</div></div>
     <div id="cartItems" class="items">Выберите блюда из меню</div>
+    <div id="availabilityNotice" role="status" aria-live="polite" style="font-size:13px;line-height:1.4">Проверяем доступность…</div>
     <button id="checkout" class="checkout" disabled>Оформить заказ · 0 ₸</button>
   </div>
 </div>
 <div id="modalRoot"></div>
 <script>
+var availabilityReady=false, locationAvailability=null, availabilityCheckedAt=0;
 var lang='ru', categories=[], products=[], activeCat=null, cart=[], selected=null, menuReady=false, retryTimer=null, stopRefreshTimer=null, stoppedProductIds={}, customerPhone='', crmWelcomeEligible=false, crmWelcomePercent=0, crmCustomerExists=false, crmLookupReady=false, orderMode=null;
 var CAT_KZ={'Комбо':'Комбо','Донер':'Донерлер','Донеры':'Донерлер','Бар':'Сусындар','Напитки':'Сусындар','Чаи':'Шай','Сладости':'Тәттілер','Дополнительное':'Қосымша','Дополнительно':'Қосымша','Батоны':'Батондар','Фри':'Фри','Стрипсы':'Стрипстер','Акции':'Науқандар'};
 var MENU_CACHE_KEY='donerclub-kiosk-arai-menu-v1', MENU_CACHE_TTL=10*60*1000;
@@ -204,7 +206,7 @@ function isOrderTypeGroup(group){
   return !!(kinds.dinein&&kinds.takeaway);
 }
 function isStoppedProductId(id){
-  return !!stoppedProductIds[String(id||'')];
+  return !!stoppedProductIds[String(id||'').toLowerCase()];
 }
 function availableModifierItems(group){
   return (group&&group.items||[]).filter(function(item){
@@ -491,9 +493,27 @@ function removeStoppedFromCart(){
   }
   return false;
 }
+function ordersAvailable(){
+  return availabilityReady && locationAvailability && locationAvailability.acceptsOrders===true && Date.now()-availabilityCheckedAt<60000;
+}
+function refreshAvailabilityNotice(){
+  var notice=document.getElementById('availabilityNotice');
+  if(notice)notice.textContent=!availabilityReady
+    ? t('Проверяем доступность. Если ожидание затянулось, обратитесь к кассиру.','Қолжетімділікті тексерудеміз. Күту ұзақ болса, кассирге хабарласыңыз.')
+    : !ordersAvailable() ? t('Приём заказов временно остановлен','Тапсырыстар уақытша қабылданбайды')
+    : t('Ожидание: ','Күту: ')+locationAvailability.pickupMinutes+t(' мин',' мин');
+  var button=document.getElementById('checkout');
+  if(button)button.disabled=!cart.length||!ordersAvailable();
+}
 function applyStopListData(data){
+  var wasAvailable=ordersAvailable();
+  locationAvailability=data.location;
+  availabilityReady=!!locationAvailability&&typeof locationAvailability.acceptsOrders==='boolean';
+  availabilityCheckedAt=Date.now();
+  if(wasAvailable&&!ordersAvailable())closeModal();
+  refreshAvailabilityNotice();
   var next={};
-  (data&&data.stoppedProductIds||[]).forEach(function(id){next[String(id)]=true});
+  (data&&data.stoppedProductIds||[]).forEach(function(id){next[String(id).toLowerCase()]=true});
   var changed=!sameStopMap(stoppedProductIds,next);
   stoppedProductIds=next;
   var cartChanged=removeStoppedFromCart();
@@ -523,7 +543,12 @@ async function loadStopList(){
     var data=await response.json();
     if(!response.ok||!data.success)throw data;
     applyStopListData(data);
+    return ordersAvailable();
   }catch(error){
+    availabilityReady=false;
+    refreshAvailabilityNotice();
+    closeModal();
+    return false;
     // Keep the last known stop list so a temporary iiko/network issue
     // never makes unavailable products reappear.
   }finally{
@@ -982,7 +1007,7 @@ function updateCart(){
   document.getElementById('count').textContent=n?n+' '+t('поз.','поз.'):t('Корзина пуста','Себет бос');
   document.getElementById('sum').textContent=money(s);
   paintSideCartItems();
-  var b=document.getElementById('checkout');b.disabled=!n;b.textContent=t('Оформить заказ','Тапсырысты рәсімдеу')+' · '+money(s);
+  var b=document.getElementById('checkout');b.disabled=!n||!ordersAvailable();b.textContent=t('Оформить заказ','Тапсырысты рәсімдеу')+' · '+money(s);
 }
 function cartProductIds(){
   var ids={};
@@ -1057,6 +1082,7 @@ function recommendCardHtml(p,index){
   '</article>';
 }
 function openCart(){
+  if(!ordersAvailable()){refreshAvailabilityNotice();return;}
   if(!cart.length)return;
   document.getElementById('modalRoot').innerHTML=
     '<div class="overlay"><div class="modal cartModal">'+
@@ -1241,6 +1267,7 @@ async function sendPaidTestIikoOrder(){
     return;
   }
 
+  if(!ordersAvailable()){refreshAvailabilityNotice();return;}
   var first=window.confirm(t(
     'ВНИМАНИЕ: этот тест будет записан в iiko как ОПЛАЧЕННАЯ внешняя продажа на '+money(paymentSum)+'. Продолжить?',
     'НАЗАР: бұл тест iiko-да '+money(paymentSum)+' сомасына ТӨЛЕНГЕН сыртқы сату ретінде жазылады. Жалғастыру керек пе?'
@@ -1391,7 +1418,9 @@ function openPhoneEntry(){
   };
   document.getElementById('phoneBack').onclick=openCart;
 }
-function openPay(){
+async function openPay(){
+  var before=JSON.stringify(cart);
+  if(!await loadStopList()||!cart.length||before!==JSON.stringify(cart))return;
   var discount=welcomeDiscountAmount();
   var finalTotal=payableTotal();
   var phoneNote=customerPhone
@@ -1412,6 +1441,7 @@ function openPay(){
   document.querySelectorAll('.payChoice').forEach(function(b){b.onclick=showSuccess});
 }
 function showSuccess(){
+  if(!ordersAvailable()){closeModal();refreshAvailabilityNotice();return;}
   document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal center"><div class="success">✓</div><h2>'+t('Демонстрация завершена','Көрсетілім аяқталды')+'</h2><p class="lead">'+t('Оплата не проводилась. Заказ в iiko не отправлен.','Төлем жасалмады. Тапсырыс iiko-ға жіберілген жоқ.')+'</p><button class="primary" id="finish" style="width:100%">'+t('Готово','Дайын')+'</button></div></div>';
   enableBackdropClose();
   document.getElementById('finish').onclick=function(){cart=[];customerPhone='';resetCrmDiscount();closeModal();updateCart();refreshCardActions();resetOrderMode()};
