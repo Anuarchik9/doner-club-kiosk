@@ -186,25 +186,90 @@ def get_departments(force_refresh=False):
         return departments
 
 
-def find_department(point):
-    normalized = (point or "").strip().lower()
+POINT_ALIASES = {
+    "arai": ("arai", "aray", "арай"),
+    "aray": ("arai", "aray", "арай"),
+    "арай": ("arai", "aray", "арай"),
+    "respublica": ("respublica", "respublika", "republic", "republica", "республика"),
+    "respublika": ("respublica", "respublika", "republic", "republica", "республика"),
+    "republic": ("respublica", "respublika", "republic", "republica", "республика"),
+    "republica": ("respublica", "respublika", "republic", "republica", "республика"),
+    "республика": ("respublica", "respublika", "republic", "republica", "республика"),
+}
+
+
+def point_search_terms(point):
+    normalized = (point or "").strip().casefold()
     if not normalized:
+        return ()
+    terms = [normalized]
+    for alias in POINT_ALIASES.get(normalized, ()):
+        alias = alias.casefold()
+        if alias not in terms:
+            terms.append(alias)
+    return tuple(terms)
+
+
+def find_department(point):
+    terms = point_search_terms(point)
+    if not terms:
         return None, []
     departments = get_departments()
 
     for department in departments:
-        code = (department.get("code") or "").strip().lower()
-        name = (department.get("name") or "").strip().lower()
-        if code == normalized or name == normalized:
+        code = (department.get("code") or "").strip().casefold()
+        name = (department.get("name") or "").strip().casefold()
+        if any(code == term or name == term for term in terms):
             return department, departments
 
     for department in departments:
-        code = (department.get("code") or "").strip().lower()
-        name = (department.get("name") or "").strip().lower()
-        if normalized in code or normalized in name:
+        code = (department.get("code") or "").strip().casefold()
+        name = (department.get("name") or "").strip().casefold()
+        if any(term in code or term in name for term in terms):
             return department, departments
 
     return None, departments
+
+
+def select_external_menu(external_menus, requested_menu, department):
+    requested = (requested_menu or "").strip()
+    if requested and requested != "__AUTO__":
+        exact = next(
+            (
+                menu for menu in external_menus
+                if (menu.get("name") or "").strip().casefold() == requested.casefold()
+            ),
+            None,
+        )
+        if exact:
+            return exact
+
+    if requested != "__AUTO__":
+        return None
+
+    point_terms = set(point_search_terms(department.get("code")))
+    point_terms.update(point_search_terms(department.get("name")))
+    generic = {"doner", "club", "donerclub", "точка", "point"}
+    point_terms = {term for term in point_terms if term and term not in generic}
+
+    kiosk_menus = [
+        menu for menu in external_menus
+        if "kiosk" in (menu.get("name") or "").casefold()
+    ]
+
+    matched = []
+    for menu in kiosk_menus:
+        name = (menu.get("name") or "").casefold()
+        if any(term in name for term in point_terms):
+            matched.append(menu)
+
+    if len(matched) == 1:
+        return matched[0]
+    if len(kiosk_menus) == 1:
+        return kiosk_menus[0]
+    if len(external_menus) == 1:
+        return external_menus[0]
+    return None
 
 
 def get_external_menus(organization_id):
@@ -611,7 +676,7 @@ def _validate_point_terminal_table(point, terminal_group_id, table_id):
         return None, {
             "success": False,
             "code": "INVALID_TERMINAL_GROUP",
-            "message": "Selected terminal group does not belong to Arai.",
+            "message": f"Selected terminal group does not belong to {department.get('name') or point}.",
         }, 400
 
     sections, _ = get_restaurant_sections_for_terminal_groups([terminal_group_id])
@@ -661,6 +726,10 @@ def _wait_command(organization_id, correlation_id, attempts=10):
 
 @app.route("/")
 @app.route("/kiosk")
+@app.route("/Aray")
+@app.route("/aray")
+@app.route("/respublica")
+@app.route("/Respublica")
 def home():
     return app.send_static_file("kiosk-preview.html")
 
@@ -673,7 +742,7 @@ def health():
 @app.route("/kiosk-menu")
 def kiosk_menu():
     point = request.args.get("point", "Arai").strip()
-    requested_menu = request.args.get("menu", "Kiosk Арай").strip()
+    requested_menu = request.args.get("menu", "").strip()
 
     try:
         department, available_departments = find_department(point)
@@ -692,19 +761,17 @@ def kiosk_menu():
         menus_payload = get_external_menus(organization_id)
         external_menus = menus_payload.get("externalMenus", []) or []
 
-        selected = next(
-            (
-                menu for menu in external_menus
-                if (menu.get("name") or "").strip().casefold() == requested_menu.casefold()
-            ),
-            None,
-        )
+        selected = select_external_menu(external_menus, requested_menu, department)
 
         if not selected:
             response = jsonify({
                 "success": False,
                 "code": "EXTERNAL_MENU_NOT_FOUND",
-                "message": f"External menu '{requested_menu}' is not available for point '{point}'.",
+                "message": (
+                    f"Could not resolve a kiosk menu for point '{point}'."
+                    if requested_menu == "__AUTO__"
+                    else f"External menu '{requested_menu}' is not available for point '{point}'."
+                ),
                 "requestedMenu": requested_menu,
                 "availableMenus": [
                     {"id": menu.get("id"), "name": menu.get("name")}
