@@ -129,7 +129,7 @@
 <div id="app" class="modePending">
   <div class="top">
     <div class="brand"><div class="mark">DC</div>DONER CLUB</div>
-    <div id="pointBadge" class="pointBadge" title="Удерживайте для обновления меню">Арай</div>
+    <div id="pointBadge" class="pointBadge" title="Удерживайте для обновления меню">Точка</div>
     <div id="serviceModeBadge" class="serviceModeBadge"></div>
     <div id="status" class="status" aria-hidden="true"></div>
     <div class="langs"><button id="kzBtn">ҚАЗ</button><button id="ruBtn" class="on">РУС</button></div>
@@ -137,7 +137,7 @@
   </div>
   <section id="orderModeScreen" class="orderModeScreen">
     <div class="orderModeInner">
-      <div class="orderModeEyebrow">DONER CLUB · АРАЙ</div>
+      <div id="orderModeEyebrow" class="orderModeEyebrow">DONER CLUB</div>
       <h1 id="orderModeTitle" class="orderModeTitle">Где будете есть?</h1>
       <p id="orderModeLead" class="orderModeLead">Выберите тип заказа — дальше откроется меню.</p>
       <div class="orderModeChoices">
@@ -172,10 +172,41 @@
 var availabilityReady=false, locationAvailability=null, availabilityCheckedAt=0;
 var lang='ru', categories=[], products=[], activeCat=null, cart=[], selected=null, menuReady=false, retryTimer=null, stopRefreshTimer=null, stoppedProductIds={}, customerPhone='', crmWelcomeEligible=false, crmWelcomePercent=0, crmCustomerExists=false, crmLookupReady=false, orderMode=null;
 var CAT_KZ={'Комбо':'Комбо','Донер':'Донерлер','Донеры':'Донерлер','Бар':'Сусындар','Напитки':'Сусындар','Чаи':'Шай','Сладости':'Тәттілер','Дополнительное':'Қосымша','Дополнительно':'Қосымша','Батоны':'Батондар','Фри':'Фри','Стрипсы':'Стрипстер','Акции':'Науқандар'};
-var MENU_CACHE_KEY='donerclub-kiosk-arai-menu-v1', MENU_CACHE_TTL=10*60*1000;
+
+function kioskContextFromPath(){
+  var path=String(window.location.pathname||'/').replace(/\/+$/,'').toLowerCase();
+  if(path==='/respublica'){
+    return {
+      key:'respublica',
+      point:'RESPUBLIKA',
+      displayRu:'Республика',
+      displayKz:'Республика',
+      eyebrow:'DONER CLUB · РЕСПУБЛИКА',
+      menu:'__AUTO__'
+    };
+  }
+  return {
+    key:'arai',
+    point:'ARAI',
+    displayRu:'Арай',
+    displayKz:'Арай',
+    eyebrow:'DONER CLUB · АРАЙ',
+    menu:'Kiosk Арай'
+  };
+}
+var KIOSK_CONTEXT=kioskContextFromPath();
+var MENU_CACHE_KEY='donerclub-kiosk-'+KIOSK_CONTEXT.key+'-menu-v2', MENU_CACHE_TTL=10*60*1000;
 var STOP_REFRESH_MS=30*1000;
-var CART_SESSION_KEY='donerclub-kiosk-arai-cart-v1';
+var CART_SESSION_KEY='donerclub-kiosk-'+KIOSK_CONTEXT.key+'-cart-v2';
 var navScrollLockUntil=0;
+function pointLabel(){return lang==='ru'?KIOSK_CONTEXT.displayRu:KIOSK_CONTEXT.displayKz}
+function applyKioskContextLabels(){
+  var badge=document.getElementById('pointBadge');
+  if(badge&&!badge.classList.contains('pushing'))badge.textContent=pointLabel();
+  var eyebrow=document.getElementById('orderModeEyebrow');
+  if(eyebrow)eyebrow.textContent=KIOSK_CONTEXT.eyebrow;
+  document.title='Doner Club Kiosk · '+KIOSK_CONTEXT.displayRu;
+}
 function t(ru,kz){return lang==='ru'?ru:kz}
 function money(n){return Number(n||0).toLocaleString('ru-RU')+' ₸'}
 function categoryName(c){return lang==='ru'?c.name:(CAT_KZ[c.name]||c.name)}
@@ -350,12 +381,12 @@ function pushMenuNow(){
   var badge=document.getElementById('pointBadge');
   if(badge){
     badge.classList.add('pushing');
-    badge.textContent=t('Арай · обновление','Арай · жаңарту');
+    badge.textContent=pointLabel()+' · '+t('обновление','жаңарту');
   }
   loadMenu(true).finally(function(){
     if(badge){
       badge.classList.remove('pushing');
-      badge.textContent='Арай';
+      badge.textContent=pointLabel();
     }
   });
 }
@@ -412,7 +443,7 @@ function applyMenuData(data){
   applyOrderModeToExistingCart();
   var status=document.getElementById('status');
   status.className='status ok';
-  status.textContent='Kiosk Арай · iiko · '+products.length+' поз.';
+  status.textContent='Kiosk '+pointLabel()+' · iiko · '+products.length+' поз.';
   document.getElementById('setup').innerHTML='';
   paint();
 }
@@ -435,14 +466,14 @@ async function loadMenu(force){
 
   if(!products.length){
     status.className='status';
-    status.textContent='Kiosk Арай · загружаю iiko…';
+    status.textContent='Kiosk '+pointLabel()+' · '+t('загружаю iiko…','iiko жүктелуде…');
   }else{
     status.className='status ok';
-    status.textContent='Kiosk Арай · обновляю меню…';
+    status.textContent='Kiosk '+pointLabel()+' · '+t('обновляю меню…','мәзір жаңартылуда…');
   }
 
   try{
-    var r=await fetch('/kiosk-menu?point=Arai&menu='+encodeURIComponent('Kiosk Арай'),{cache:'no-store'});
+    var r=await fetch('/kiosk-menu?point='+encodeURIComponent(KIOSK_CONTEXT.point)+'&menu='+encodeURIComponent(KIOSK_CONTEXT.menu),{cache:'no-store'});
     var data=await r.json();
     if(!r.ok||!data.success) throw data;
 
@@ -453,14 +484,14 @@ async function loadMenu(force){
     if(cached&&cached.data){
       applyMenuData(cached.data);
       status.className='status ok';
-      status.textContent='Kiosk Арай · сохранённое меню · '+products.length+' поз.';
+      status.textContent='Kiosk '+pointLabel()+' · '+t('сохранённое меню','сақталған мәзір')+' · '+products.length+' поз.';
       scheduleMenuRefresh(60*1000);
       return;
     }
 
     menuReady=false;
     status.className='status err';
-    status.textContent='Kiosk Арай · не доступно через API';
+    status.textContent='Kiosk '+pointLabel()+' · '+t('не доступно через API','API арқылы қолжетімсіз');
     var names=(e&&e.availableMenus||[]).map(function(x){return x.name}).filter(Boolean);
     document.getElementById('setup').innerHTML='<div class="setup"><b>'+t('Не удалось загрузить меню. Повторяем подключение…','Мәзір жүктелмеді. Қайта қосылып жатырмыз…')+'</b><br>'+esc(e.message||e.code||t('Проверьте подключение к сети.','Желіге қосылуды тексеріңіз.'))+(names.length?'<br>'+t('Доступные меню: ','Қолжетімді мәзірлер: ')+esc(names.join(', ')):'')+'</div>';
     categories=[];products=[];paint();
@@ -539,7 +570,7 @@ function scheduleStopRefresh(){
 }
 async function loadStopList(){
   try{
-    var response=await fetch('/kiosk-stop-list?point=Arai',{cache:'no-store'});
+    var response=await fetch('/kiosk-stop-list?point='+encodeURIComponent(KIOSK_CONTEXT.point),{cache:'no-store'});
     var data=await response.json();
     if(!response.ok||!data.success)throw data;
     applyStopListData(data);
@@ -728,6 +759,7 @@ function syncActiveCategoryFromScroll(){
 }
 function paint(){
   document.documentElement.lang=lang==='ru'?'ru':'kk';
+  applyKioskContextLabels();
   paintOrderModeScreen();
   document.getElementById('ruBtn').classList.toggle('on',lang==='ru');
   document.getElementById('kzBtn').classList.toggle('on',lang==='kz');
@@ -1199,7 +1231,7 @@ function openTestIiko(){
     '<div class="overlay"><div class="modal">'+
       '<h2>'+t('Тестовый заказ в iiko','iiko-ға тест тапсырыс')+'</h2>'+
       '<div class="testIikoNotice">'+t('На этом экране ничего не отправляется автоматически. Оплаченный тестовый заказ уйдёт в iiko только после нажатия зелёной кнопки и двух подтверждений.','Бұл экранда ештеңе автоматты түрде жіберілмейді. Төленген тест тапсырыс тек жасыл батырманы басып, екі рет растағаннан кейін iiko-ға жіберіледі.')+'</div>'+
-      '<div class="testIikoPanel" id="testIikoPanel"><div class="testIikoStatus" id="testIikoStatus">'+t('Получаю кассы и столы Арай из iiko…','Арай кассалары мен үстелдерін iiko-дан алып жатырмын…')+'</div></div>'+
+      '<div class="testIikoPanel" id="testIikoPanel"><div class="testIikoStatus" id="testIikoStatus">'+t('Получаю кассы и столы '+KIOSK_CONTEXT.displayRu+' из iiko…',KIOSK_CONTEXT.displayKz+' кассалары мен үстелдерін iiko-дан алып жатырмын…')+'</div></div>'+
       '<button class="testIikoBack" id="testIikoBack">'+t('Назад в корзину','Себетке қайту')+'</button>'+
     '</div></div>';
   enableBackdropClose();
@@ -1210,7 +1242,7 @@ async function loadTestIikoConfig(){
   var panel=document.getElementById('testIikoPanel');
   if(!panel)return;
   try{
-    var response=await fetch('/kiosk-iiko-config?point=Arai',{cache:'no-store'});
+    var response=await fetch('/kiosk-iiko-config?point='+encodeURIComponent(KIOSK_CONTEXT.point),{cache:'no-store'});
     var data=await response.json();
     if(!response.ok||!data.success)throw data;
 
@@ -1290,7 +1322,7 @@ async function sendPaidTestIikoOrder(){
       body:JSON.stringify({
         confirm:'SEND_PAID_TEST_ORDER',
         acknowledgeFinancialEffect:true,
-        point:'Arai',
+        point:KIOSK_CONTEXT.point,
         terminalGroupId:terminal.value,
         tableId:table.value,
         paymentSum:paymentSum,
@@ -1485,6 +1517,7 @@ document.getElementById('modeDineIn').onclick=function(){chooseOrderMode('dinein
 document.getElementById('modeTakeaway').onclick=function(){chooseOrderMode('takeaway')};
 document.getElementById('serviceModeBadge').onclick=function(){resetOrderMode()};
 
+applyKioskContextLabels();
 restoreCartSession();
 paint();
 loadStopList();
