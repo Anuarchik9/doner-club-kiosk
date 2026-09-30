@@ -272,8 +272,24 @@ def select_external_menu(external_menus, requested_menu, department):
     return None
 
 
+def external_menu_post(path, payload, timeout):
+    # Menu access is assigned to the dedicated KIOSK integration.
+    # Preserve the previous reader during rollout if that integration rejects a menu.
+    kiosk_payload = dict(payload)
+    if path == "/api/2/menu/by_id":
+        kiosk_payload["priceCategoryId"] = os.environ.get(
+            "IIKO_KIOSK_PRICE_CATEGORY_ID", "00000000-0000-0000-0000-000000000000"
+        )
+    response = iiko_kiosk_post(path, kiosk_payload, timeout=timeout)
+    if response.status_code in (400, 403) and os.environ.get("IIKO_API_KEY"):
+        fallback = iiko_post(path, payload, timeout=timeout)
+        if fallback.ok:
+            return fallback
+    return response
+
+
 def get_external_menus(organization_id):
-    response = iiko_post(
+    response = external_menu_post(
         "/api/2/menu",
         {"organizationIds": [organization_id]},
         timeout=35,
@@ -283,7 +299,7 @@ def get_external_menus(organization_id):
 
 
 def get_external_menu_by_id(external_menu_id, organization_id):
-    response = iiko_post(
+    response = external_menu_post(
         "/api/2/menu/by_id",
         {
             "externalMenuId": str(external_menu_id),
