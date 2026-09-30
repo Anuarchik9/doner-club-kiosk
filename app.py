@@ -800,6 +800,32 @@ def kiosk_menu():
         menu_data = get_external_menu_by_id(selected.get("id"), organization_id)
         categories, products = normalize_external_menu(menu_data, organization_id)
 
+        if not products:
+            visible_items = [
+                item for category in (menu_data.get("itemCategories") or [])
+                if not category.get("isHidden")
+                for item in (category.get("items") or []) if not item.get("isHidden")
+            ]
+            visible_sizes = [
+                size for item in visible_items for size in (item.get("itemSizes") or [])
+                if not size.get("isHidden")
+            ]
+            message = (
+                "Внешнее меню iiko доступно, но в нём нет открытых блюд. Проверьте состав и публикацию меню."
+                if not visible_items else
+                "Внешнее меню iiko доступно, но для блюд нет доступных размеров."
+                if not visible_sizes else
+                "Внешнее меню iiko доступно, но для блюд не получены цены. Проверьте цены для этой точки и ценовой категории."
+            )
+            response = jsonify(
+                success=False, code="EXTERNAL_MENU_EMPTY", message=message,
+                menu={"id": selected.get("id"), "name": selected.get("name")},
+                diagnostics={"visibleItems": len(visible_items), "visibleSizes": len(visible_sizes),
+                             "sizesWithoutPrice": sum(_menu_price(size.get("prices"), organization_id) is None for size in visible_sizes)},
+            )
+            response.headers["Cache-Control"] = "no-store"
+            return response, 422
+
         response = jsonify({
             "success": True,
             "source": "iikoCloud external menu",
