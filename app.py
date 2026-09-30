@@ -273,7 +273,7 @@ def select_external_menu(external_menus, requested_menu, department):
 
 
 def get_external_menus(organization_id):
-    response = iiko_post(
+    response = iiko_kiosk_post(
         "/api/2/menu",
         {"organizationIds": [organization_id]},
         timeout=35,
@@ -283,7 +283,7 @@ def get_external_menus(organization_id):
 
 
 def get_external_menu_by_id(external_menu_id, organization_id):
-    response = iiko_post(
+    response = iiko_kiosk_post(
         "/api/2/menu/by_id",
         {
             "externalMenuId": str(external_menu_id),
