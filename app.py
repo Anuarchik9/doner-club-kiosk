@@ -20,6 +20,8 @@ def availability_unavailable(error):
 def combined_availability(department):
     organization_id = department["organizationId"]
     code = str(department.get("code") or "").strip().upper()
+    if str(organization_id).lower() == "9f2c2c10-a4e8-4e80-ac1d-beedf7d5182e":
+        code = "RESPUBLIKA"
     location, manual_codes = crm_state(CRM_BASE_URL, CRM_API_KEY, code)
     try:
         payload = get_stop_lists(organization_id)
