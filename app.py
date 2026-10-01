@@ -274,8 +274,8 @@ def select_external_menu(external_menus, requested_menu, department):
     return None
 
 
-def external_menu_post(path, payload, timeout):
-    # Menu access is assigned to the dedicated KIOSK integration.
+def kiosk_read_post(path, payload, timeout):
+    # Kiosk menu and stop-list access use the dedicated KIOSK integration.
     # Preserve the previous reader during rollout if that integration rejects a menu.
     kiosk_payload = dict(payload)
     if path == "/api/2/menu/by_id":
@@ -291,7 +291,7 @@ def external_menu_post(path, payload, timeout):
 
 
 def get_external_menus(organization_id):
-    response = external_menu_post(
+    response = kiosk_read_post(
         "/api/2/menu",
         {"organizationIds": [organization_id]},
         timeout=35,
@@ -301,7 +301,7 @@ def get_external_menus(organization_id):
 
 
 def get_external_menu_by_id(external_menu_id, organization_id):
-    response = external_menu_post(
+    response = kiosk_read_post(
         "/api/2/menu/by_id",
         {
             "externalMenuId": str(external_menu_id),
@@ -314,7 +314,7 @@ def get_external_menu_by_id(external_menu_id, organization_id):
 
 
 def get_stop_lists(organization_id):
-    response = iiko_post(
+    response = kiosk_read_post(
         "/api/1/stop_lists",
         {"organizationIds": [organization_id]},
         timeout=20,
