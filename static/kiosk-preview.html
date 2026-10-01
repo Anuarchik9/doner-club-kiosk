@@ -795,7 +795,7 @@ function donerSizeGroup(name){
   if(n.indexOf('батон')>=0||n.indexOf('baton')>=0)return 'baton';
   if(n.indexOf('mini')>=0||n.indexOf('мини')>=0)return 'mini';
   if(n.indexOf('1.5')>=0||n.indexOf('1,5')>=0||n.indexOf('полтора')>=0||n.indexOf('полутор')>=0)return 'onehalf';
-  if(n.indexOf('двойн')>=0||n.indexOf('double')>=0)return 'double';
+  if(n.indexOf('двойн')>=0||n.indexOf('double')>=0||/(^|\s)[xх]\s*2(\s|$)/.test(n)||/(^|\s)2\s*[xх](\s|$)/.test(n))return 'double';
   if(n.indexOf('стандарт')>=0||n.indexOf('standard')>=0)return 'standard';
   if(n.indexOf('донер')>=0||n.indexOf('doner')>=0)return 'standard';
   return 'other';
@@ -804,7 +804,7 @@ function donerSizeLabel(key){
   if(key==='mini')return t('Мини','Мини');
   if(key==='standard')return t('Стандарт','Стандарт');
   if(key==='onehalf')return t('Полтора','Бір жарым');
-  if(key==='double')return t('Двойные','Қос');
+  if(key==='double')return t('Двойной','Қос');
   if(key==='baton')return t('Батоны','Батондар');
   return '';
 }
