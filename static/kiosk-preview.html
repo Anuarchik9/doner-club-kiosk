@@ -803,20 +803,22 @@ function donerSizeGroup(name){
 function donerSizeLabel(key){
   if(key==='mini')return t('Мини','Мини');
   if(key==='standard')return t('Стандарт','Стандарт');
-  if(key==='onehalf')return '1.5';
-  if(key==='double')return t('Двойной','Қос');
+  if(key==='onehalf')return t('Полтора','Бір жарым');
+  if(key==='double')return t('Двойные','Қос');
   if(key==='baton')return t('Батоны','Батондар');
   return '';
 }
-function isDonerCategory(category,list){
-  var name=String(category&&category.name||'').toLowerCase();
-  if(name.indexOf('донер')>=0||name.indexOf('doner')>=0)return true;
-  return (list||[]).some(function(p){
-    var n=String(p&&p.name||'').toLowerCase();
-    return n.indexOf('донер')>=0||n.indexOf('doner')>=0;
-  });
+function isDonerCategory(category){
+  var name=String(category&&category.name||'')
+    .toLowerCase()
+    .replace(/ё/g,'е')
+    .replace(/[^a-zа-я0-9]+/g,' ')
+    .trim();
+  return name==='донер'||name==='донеры'||name==='doner'||name==='doners';
 }
 function donerGroupedCards(list){
+  // Visual subgroups only inside the actual Doner category.
+  // This must never regroup Combo, Additional or any other menu category.
   var order=['mini','standard','onehalf','double','baton'];
   var groups={mini:[],standard:[],onehalf:[],double:[],baton:[],other:[]};
   (list||[]).forEach(function(product){
@@ -839,7 +841,7 @@ function paintGrid(){
   var sections=visibleMenuCategories().map(function(category){
     var list=products.filter(function(p){return p.categoryId===category.id&&productIsAvailable(p)});
     if(!list.length)return '';
-    var cards=isDonerCategory(category,list)?donerGroupedCards(list):list.map(productCard).join('');
+    var cards=isDonerCategory(category)?donerGroupedCards(list):list.map(productCard).join('');
     return '<section class="menuSection" data-menu-section="'+esc(category.id)+'"><h2>'+esc(categoryName(category))+'</h2><div class="grid">'+cards+'</div></section>';
   }).join('');
 
