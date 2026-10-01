@@ -324,20 +324,37 @@ def get_stop_lists(organization_id):
 
 
 def normalize_stop_list(payload, organization_id):
+    """Read iiko's organization -> terminal group -> product hierarchy."""
     items = []
     stopped_ids = set()
+    groups = payload.get("terminalGroupStopLists") if isinstance(payload, dict) else None
+    if not isinstance(groups, list):
+        raise ValueError("Incomplete iiko stop list")
 
-    for group in payload.get("terminalGroupStopLists", []) or []:
+    def product_items(group):
+        children = group.get("items")
+        if not isinstance(children, list):
+            raise ValueError("Incomplete iiko stop-list group")
+        terminal_id = group.get("terminalGroupId") or group.get("id")
+        for child in children:
+            if not isinstance(child, dict):
+                raise ValueError("Invalid iiko stop-list item")
+            if child.get("productId"):
+                yield child, terminal_id
+            elif isinstance(child.get("items"), list):
+                # The API wraps terminal lists in an organization object.
+                yield from product_items(child)
+            else:
+                raise ValueError("Unrecognized iiko stop-list item")
+
+    for group in groups:
+        if not isinstance(group, dict):
+            raise ValueError("Invalid iiko stop-list group")
         group_org = group.get("organizationId")
-        if group_org and str(group_org) != str(organization_id):
+        if group_org and str(group_org).casefold() != str(organization_id).casefold():
             continue
-
-        terminal_group_id = group.get("terminalGroupId") or group.get("id")
-        for item in group.get("items", []) or []:
-            product_id = str(item.get("productId") or "").strip()
-            if not product_id:
-                continue
-
+        for item, terminal_group_id in product_items(group):
+            product_id = str(item["productId"]).strip()
             raw_balance = item.get("balance")
             try:
                 balance = float(raw_balance) if raw_balance is not None else None
