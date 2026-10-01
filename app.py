@@ -766,7 +766,13 @@ def _wait_command(organization_id, correlation_id, attempts=10):
 @app.route("/respublica")
 @app.route("/Respublica")
 def home():
-    return app.send_static_file("kiosk-preview.html")
+    response = app.send_static_file("kiosk-preview.html")
+    # The kiosk UI changes frequently; never let iPad/desktop browsers keep an
+    # older HTML/JS version after a deploy.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @app.route("/health")
