@@ -279,8 +279,8 @@ def kiosk_read_post(path, payload, timeout):
     # Preserve the previous reader during rollout if that integration rejects a menu.
     kiosk_payload = dict(payload)
     if path == "/api/2/menu/by_id":
-        kiosk_payload["priceCategoryId"] = os.environ.get(
-            "IIKO_KIOSK_PRICE_CATEGORY_ID", "00000000-0000-0000-0000-000000000000"
+        kiosk_payload["priceCategoryId"] = (
+            os.environ.get("IIKO_KIOSK_PRICE_CATEGORY_ID", "").strip() or None
         )
     response = iiko_kiosk_post(path, kiosk_payload, timeout=timeout)
     if response.status_code in (400, 403) and os.environ.get("IIKO_API_KEY"):
