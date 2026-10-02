@@ -1,0 +1,251 @@
+import json
+import os
+import socket
+from pathlib import Path
+from datetime import datetime
+
+import requests
+import urllib3
+from flask import Flask, jsonify, request, render_template_string
+from dotenv import load_dotenv
+
+load_dotenv()
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+SMART_POS_HOST = os.getenv("SMART_POS_HOST", "192.168.1.8").strip()
+SMART_POS_PORT = int(os.getenv("SMART_POS_PORT", "8080"))
+CASH_REGISTER_NAME = os.getenv("CASH_REGISTER_NAME", "DonerClubHomeTest").strip()
+BRIDGE_HOST = os.getenv("BRIDGE_HOST", "127.0.0.1").strip()
+BRIDGE_PORT = int(os.getenv("BRIDGE_PORT", "8765"))
+
+DATA_DIR = Path(os.getenv(
+    "KASPI_BRIDGE_DATA_DIR",
+    Path(os.getenv("LOCALAPPDATA", ".")) / "DonerClubKaspiBridge"
+))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+TOKEN_FILE = DATA_DIR / "tokens.json"
+
+BASE_URL = f"https://{SMART_POS_HOST}:{SMART_POS_PORT}"
+HTTP = requests.Session()
+HTTP.verify = False
+
+app = Flask(__name__)
+
+PAGE = """<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Doner Club Kaspi Bridge</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f5f3ef;color:#161616;margin:0;padding:28px}
+.wrap{max-width:760px;margin:auto}.card{background:#fff;border-radius:18px;padding:22px;box-shadow:0 8px 30px rgba(0,0,0,.06)}
+h1{margin:0 0 8px}.muted{color:#777}.row{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}
+button{border:0;border-radius:12px;padding:13px 16px;font-weight:700;cursor:pointer}
+.primary{background:#ff5a12;color:#fff}.secondary{background:#efede9}.danger{background:#ffe9df;color:#9c3211}
+pre{white-space:pre-wrap;background:#111;color:#eee;padding:14px;border-radius:12px;min-height:90px}
+.ok{color:#168249}.bad{color:#b83222}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="card">
+<h1>Doner Club · Kaspi Bridge</h1>
+<div class="muted">Тестовый режим. Платежные методы намеренно отсутствуют.</div>
+<p><b>Smart POS:</b> {{host}}:{{port}}<br><b>Имя кассы:</b> {{name}}<br><b>Локальный ПК:</b> {{local_ip}}</p>
+<div class="row">
+<button class="secondary" onclick="callApi('/api/ping','GET')">1. Проверить порт 8080</button>
+<button class="primary" onclick="callApi('/api/register','POST')">2. Зарегистрировать кассу</button>
+<button class="secondary" onclick="callApi('/api/device','GET')">3. Проверить Smart POS</button>
+<button class="secondary" onclick="callApi('/api/refresh','POST')">Обновить токен</button>
+</div>
+<div id="hint" class="muted">Для регистрации нажмите кнопку 2 и подтвердите запрос на экране Smart POS.</div>
+<pre id="out">Готово к тесту.</pre>
+</div></div>
+<script>
+async function callApi(url,method){
+  const out=document.getElementById('out');
+  out.textContent='Выполняю запрос...';
+  try{
+    const r=await fetch(url,{method:method});
+    const data=await r.json();
+    out.textContent=JSON.stringify(data,null,2);
+  }catch(e){out.textContent='Ошибка: '+e;}
+}
+</script>
+</body></html>"""
+
+def load_tokens():
+    if not TOKEN_FILE.exists():
+        return {}
+    try:
+        return json.loads(TOKEN_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def save_tokens(data):
+    TOKEN_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def extract_data(payload):
+    if not isinstance(payload, dict):
+        return {}
+    data = payload.get("data")
+    return data if isinstance(data, dict) else {}
+
+def smart_get(path, *, params=None, token=None, timeout=20):
+    headers = {}
+    if token:
+        headers["accesstoken"] = token
+    return HTTP.get(BASE_URL + path, params=params or {}, headers=headers, timeout=timeout)
+
+def local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect((SMART_POS_HOST, SMART_POS_PORT))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "не определён"
+
+@app.get("/")
+def index():
+    return render_template_string(
+        PAGE,
+        host=SMART_POS_HOST,
+        port=SMART_POS_PORT,
+        name=CASH_REGISTER_NAME,
+        local_ip=local_ip(),
+    )
+
+@app.get("/api/health")
+def health():
+    tokens = load_tokens()
+    return jsonify({
+        "ok": True,
+        "mode": "test-only",
+        "paymentsEnabled": False,
+        "smartPos": f"{SMART_POS_HOST}:{SMART_POS_PORT}",
+        "cashRegisterName": CASH_REGISTER_NAME,
+        "tokenStored": bool(tokens.get("accessToken")),
+        "tokenFile": str(TOKEN_FILE),
+        "localIp": local_ip(),
+    })
+
+@app.get("/api/ping")
+def ping():
+    try:
+        with socket.create_connection((SMART_POS_HOST, SMART_POS_PORT), timeout=4):
+            return jsonify({
+                "ok": True,
+                "message": "Smart POS доступен по TCP.",
+                "smartPos": f"{SMART_POS_HOST}:{SMART_POS_PORT}",
+                "localIp": local_ip(),
+            })
+    except Exception as error:
+        return jsonify({
+            "ok": False,
+            "message": "Не удалось подключиться к Smart POS. Проверьте, что ПК и терминал в одной Wi‑Fi/LAN сети и IP терминала актуален.",
+            "details": str(error),
+            "smartPos": f"{SMART_POS_HOST}:{SMART_POS_PORT}",
+            "localIp": local_ip(),
+        }), 503
+
+@app.post("/api/register")
+def register():
+    try:
+        response = smart_get(
+            "/v2/register",
+            params={"name": CASH_REGISTER_NAME},
+            timeout=120,
+        )
+        payload = response.json()
+        data = extract_data(payload)
+        if response.ok and payload.get("statusCode") == 0 and data.get("accessToken"):
+            save_tokens({
+                "name": CASH_REGISTER_NAME,
+                "accessToken": data.get("accessToken"),
+                "refreshToken": data.get("refreshToken"),
+                "expirationDate": data.get("expirationDate"),
+                "smartPosHost": SMART_POS_HOST,
+                "savedAt": datetime.now().isoformat(timespec="seconds"),
+            })
+            return jsonify({
+                "ok": True,
+                "message": "Касса зарегистрирована. Токены сохранены локально.",
+                "expirationDate": data.get("expirationDate"),
+                "tokenFile": str(TOKEN_FILE),
+            })
+        return jsonify({
+            "ok": False,
+            "message": "Smart POS не завершил регистрацию.",
+            "httpStatus": response.status_code,
+            "response": payload,
+        }), 400
+    except requests.Timeout:
+        return jsonify({
+            "ok": False,
+            "message": "Smart POS не ответил вовремя. Если на терминале был запрос доступа — повторите регистрацию и нажмите «Разрешить».",
+        }), 504
+    except Exception as error:
+        return jsonify({"ok": False, "message": "Ошибка регистрации.", "details": str(error)}), 500
+
+@app.post("/api/refresh")
+def refresh():
+    tokens = load_tokens()
+    refresh_token = tokens.get("refreshToken")
+    name = tokens.get("name") or CASH_REGISTER_NAME
+    if not refresh_token:
+        return jsonify({"ok": False, "message": "Сначала зарегистрируйте кассу."}), 400
+    try:
+        response = smart_get(
+            "/v2/revoke",
+            params={"name": name, "refreshToken": refresh_token},
+            timeout=30,
+        )
+        payload = response.json()
+        data = extract_data(payload)
+        if response.ok and payload.get("statusCode") == 0 and data.get("accessToken"):
+            save_tokens({
+                "name": name,
+                "accessToken": data.get("accessToken"),
+                "refreshToken": data.get("refreshToken"),
+                "expirationDate": data.get("expirationDate"),
+                "smartPosHost": SMART_POS_HOST,
+                "savedAt": datetime.now().isoformat(timespec="seconds"),
+            })
+            return jsonify({"ok": True, "message": "Токен обновлён.", "expirationDate": data.get("expirationDate")})
+        return jsonify({"ok": False, "response": payload}), 400
+    except Exception as error:
+        return jsonify({"ok": False, "message": "Ошибка обновления токена.", "details": str(error)}), 500
+
+@app.get("/api/device")
+def device():
+    tokens = load_tokens()
+    access_token = tokens.get("accessToken")
+    if not access_token:
+        return jsonify({"ok": False, "message": "Сначала зарегистрируйте кассу."}), 401
+    try:
+        response = smart_get("/v2/deviceinfo", token=access_token, timeout=20)
+        payload = response.json()
+        if response.status_code in (401, 403):
+            return jsonify({
+                "ok": False,
+                "message": "Токен недействителен или истёк. Нажмите «Обновить токен».",
+                "response": payload,
+            }), response.status_code
+        return jsonify({
+            "ok": response.ok and payload.get("statusCode") == 0,
+            "response": payload,
+        }), response.status_code
+    except Exception as error:
+        return jsonify({"ok": False, "message": "Ошибка запроса deviceinfo.", "details": str(error)}), 500
+
+if __name__ == "__main__":
+    print("=" * 64)
+    print("Doner Club Kaspi Bridge — TEST ONLY")
+    print(f"Smart POS: {BASE_URL}")
+    print(f"Cash register name: {CASH_REGISTER_NAME}")
+    print(f"Open: http://{BRIDGE_HOST}:{BRIDGE_PORT}")
+    print("Payments are NOT implemented in this test build.")
+    print("=" * 64)
+    app.run(host=BRIDGE_HOST, port=BRIDGE_PORT, debug=False)
