@@ -11,15 +11,15 @@ remain the original iiko catalogue text, as they did in the Kazakh interface.
 
 The new screen is styled in `static/welcome.css`. Existing menu/product/cart styles
 are retained; the small-screen header may wrap to accommodate the third language.
-The 1024 × 1536 background is served locally as `static/welcome-doner.webp` (about
-170 KB), with a dark fallback colour and no external image dependency.
+The background is the user's supplied 1600 × 1200 photograph `обложка Яндекс.jpg`,
+encoded as `static/welcome-photo.webp` without changing its composition. CSS cover
+adapts it to the screen, with a dark overlay to keep white text legible.
 
-## Background provenance
-
-Generated with the built-in imagegen tool, then encoded as WebP for delivery.
-Final prompt:
-
-> Premium photorealistic grilled doner wrap halves on a dark charcoal background with warm orange light. Portrait 2:3, food centred with quiet upper space for the brand and dark lower space for language buttons. No text, logos, watermarks or UI.
+The welcome screen uses self-hosted Noto Sans (variable weight 100–900), with
+Latin and Cyrillic glyphs including all Kazakh letters. This prevents mixed-font
+fallback for Ә, Ғ, Қ, Ң, Ө, Ұ, Ү, Һ and І. The font is from Google Fonts' Noto Sans
+distribution; its SIL Open Font License is included in `static/fonts/OFL.txt`.
+Font changes are scoped to the welcome screen.
 
 ## Validation
 

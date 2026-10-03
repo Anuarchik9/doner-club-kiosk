@@ -31,7 +31,7 @@ class KioskTests(unittest.TestCase):
 
     def test_static_routes(self):
         for path in ('/', '/kiosk', '/Aray', '/respublica', '/static/favicon.svg',
-                     '/static/welcome.css', '/static/welcome-doner.webp', '/health'):
+                     '/static/welcome.css', '/static/welcome-photo.webp', '/health'):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200)

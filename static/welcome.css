@@ -1,11 +1,12 @@
+@font-face{font-family:"Doner Noto Sans";src:url('/static/fonts/noto-sans-kiosk.woff2') format('woff2');font-style:normal;font-weight:100 900;font-display:swap}
 /* The welcome screen is separate from the existing menu and cart layout. */
-.welcome{position:relative;isolation:isolate;flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;justify-content:space-between;padding:clamp(28px,5vw,72px);color:#fff;background:#19120e}
-.welcome:before{content:"";position:absolute;inset:0;z-index:-2;background:url('/static/welcome-doner.webp') center 48%/cover no-repeat}
-.welcome:after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(13,10,8,.3),transparent 35%,transparent 57%,rgba(13,10,8,.92))}
-.welcomeBrand{display:flex;align-items:center;gap:16px;font-weight:950;font-size:clamp(24px,3vw,38px);letter-spacing:-.04em}
+.welcome{font-family:"Doner Noto Sans",Arial,sans-serif;position:relative;isolation:isolate;flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;justify-content:space-between;padding:clamp(28px,5vw,72px);color:#fff;background:#19120e}
+.welcome:before{content:"";position:absolute;inset:0;z-index:-2;background:url('/static/welcome-photo.webp') center/cover no-repeat}
+.welcome:after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(30,12,3,.82),rgba(30,12,3,.40) 30%,transparent 52%,rgba(30,12,3,.90))}
+.welcomeBrand{display:flex;align-items:center;gap:16px;font-weight:900;font-size:clamp(24px,3vw,38px);letter-spacing:-.04em}
 .welcomeMark{display:grid;place-items:center;width:64px;height:64px;border-radius:20px;background:var(--o);font-size:29px;letter-spacing:-.05em;box-shadow:0 8px 35px #ff5a1226}
 .welcomeIntro{margin-top:clamp(28px,5vh,80px)}
-.welcomeIntro h1{font-size:clamp(40px,6.4vw,88px);line-height:1.02;letter-spacing:-.05em;font-weight:950;margin:0;max-width:850px;text-wrap:balance}
+.welcomeIntro h1{font-size:clamp(40px,6.4vw,88px);line-height:1.02;letter-spacing:-.05em;font-weight:900;margin:0;max-width:850px;text-wrap:balance}
 .welcomeIntro p{margin:14px 0 0;color:#e8d9ce;font-size:clamp(14px,1.6vw,21px);font-weight:600}
 .welcomeBottom{padding-top:160px;margin-top:auto}
 .welcomeHint{font-size:12px;font-weight:800;letter-spacing:.08em;color:#e5d5c8;margin:0 0 18px;text-align:center}
@@ -23,6 +24,6 @@
 .languageBack{margin:24px auto 0;padding:12px 18px;border-radius:12px;background:#fff;color:#746d66;font-size:13px;font-weight:800}
 .languagePending>.top,.languagePending>.orderModeScreen,.languagePending>.cats,.languagePending>.content,.languagePending>.orderbar{display:none!important}
 #app:not(.languagePending)>.welcome{display:none}
-@media(min-aspect-ratio:4/3){.welcome:before{background-size:auto 150%;background-position:right 48%;background-color:#17100d}.welcome:after{background:linear-gradient(90deg,#110d0a 35%,#110d0a99 53%,transparent 75%),linear-gradient(0deg,#110d0aeb,transparent 50%)}.welcomeIntro h1{max-width:52%;font-size:clamp(40px,5.5vw,80px)}.welcomeIntro{margin-top:30px}.welcomeBottom{padding-top:50px}.welcomeChoices{max-width:none}}
+@media(min-aspect-ratio:4/3){.welcome:before{background-size:cover;background-position:center}.welcome:after{background:linear-gradient(90deg,rgba(30,12,3,.85),rgba(30,12,3,.45) 45%,rgba(30,12,3,.08) 75%),linear-gradient(0deg,#110d0aeb,transparent 50%)}.welcomeIntro h1{max-width:52%;font-size:clamp(40px,5.5vw,80px)}.welcomeIntro{margin-top:30px}.welcomeBottom{padding-top:50px}.welcomeChoices{max-width:none}}
 @media(max-width:650px){.welcome{padding:28px 20px calc(24px + env(safe-area-inset-bottom))}.welcomeBrand{font-size:24px;gap:12px}.welcomeMark{width:48px;height:48px;border-radius:15px;font-size:23px}.welcomeIntro{margin-top:26px}.welcomeIntro h1{font-size:40px}.welcomeChoices{gap:8px}.welcomeChoice{padding:17px 10px;min-height:102px;border-radius:16px}.welcomeChoice strong{font-size:15px;padding:0}.welcomeChoice small{font-size:11px;margin-top:8px}.welcomeChoice:after{display:none}.welcomeHint{font-size:10px;letter-spacing:0;margin-bottom:12px}.welcomeFoot{margin-top:18px;font-size:10px}.welcomeBottom{padding-top:180px}.top{flex-wrap:wrap;height:auto;flex-basis:auto;min-height:66px;padding-top:8px;padding-bottom:8px}.brand{white-space:nowrap}.langs{flex-shrink:0}.pointBadge,.serviceModeBadge{max-width:140px;overflow:hidden;text-overflow:ellipsis}}
 @media(prefers-reduced-motion:reduce){.welcomeChoice{transition:none}}
