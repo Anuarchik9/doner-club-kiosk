@@ -30,14 +30,15 @@ class KioskTests(unittest.TestCase):
         return self.client.post('/kiosk-test-paid-order', json=self.payload)
 
     def test_static_routes(self):
-        for path in ('/', '/kiosk', '/static/favicon.svg', '/health'):
+        for path in ('/', '/kiosk', '/Aray', '/respublica', '/static/favicon.svg',
+                     '/static/welcome.css', '/static/welcome-doner.webp', '/health'):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200)
                 response.close()
 
     def test_non_object_json(self):
-        for path in ('/kiosk-test-order', '/kiosk-test-paid-order'):
+        for path in ('/kiosk-test-order', '/kiosk-test-paid-order', '/kiosk-crm-register'):
             for value in ([1], 'bad', 1):
                 with self.subTest(path=path, value=value):
                     self.assertEqual(self.client.post(path, json=value).status_code, 400)

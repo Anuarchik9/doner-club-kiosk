@@ -1317,6 +1317,8 @@ def kiosk_test_paid_order():
 @app.post("/kiosk-crm-register")
 def kiosk_crm_register():
     payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify(success=False, code="INVALID_REQUEST", message="Expected a JSON object"), 400
     phone = str(payload.get("phone") or "").strip()
     if not phone:
         return jsonify(success=False, code="PHONE_REQUIRED", message="phone is required"), 400
