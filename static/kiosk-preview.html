@@ -1663,16 +1663,42 @@ function kaspiStatusLabel(subStatus){
   return labels[subStatus]||subStatus||t('Ожидание ответа терминала','Терминал жауабы күтілуде',"Waiting for terminal");
 }
 function renderKaspiTestState(title,message,detail,allowBack){
-  document.getElementById('modalRoot').innerHTML=
-    '<div class="overlay"><div class="modal center">'+
-      '<h2>'+esc(title)+'</h2>'+
-      '<p class="lead">'+esc(message)+'</p>'+
-      (detail?'<div class="setup" style="margin:14px 0;font-weight:900">'+esc(detail)+'</div>':'')+
-      (allowBack?'<button class="primary" id="kaspiBack" style="width:100%">'+t('Назад в корзину','Себетке қайту',"Back to cart")+'</button>':'')+
-    '</div></div>';
-  if(allowBack){
-    document.getElementById('kaspiBack').onclick=openCart;
-    enableBackdropClose();
+  var root=document.getElementById('modalRoot');
+  var state=root.querySelector('#kaspiTestState');
+
+  if(!state){
+    root.innerHTML=
+      '<div class="overlay"><div class="modal center" id="kaspiTestState">'+
+        '<h2 id="kaspiStateTitle"></h2>'+
+        '<p class="lead" id="kaspiStateMessage"></p>'+
+        '<div class="setup" id="kaspiStateDetail" style="margin:14px 0;font-weight:900"></div>'+
+        '<div id="kaspiStateActions"></div>'+
+      '</div></div>';
+    state=root.querySelector('#kaspiTestState');
+  }
+
+  var titleEl=document.getElementById('kaspiStateTitle');
+  var messageEl=document.getElementById('kaspiStateMessage');
+  var detailEl=document.getElementById('kaspiStateDetail');
+  var actionsEl=document.getElementById('kaspiStateActions');
+
+  if(titleEl)titleEl.textContent=title||'';
+  if(messageEl)messageEl.textContent=message||'';
+  if(detailEl){
+    detailEl.textContent=detail||'';
+    detailEl.style.display=detail?'block':'none';
+  }
+
+  if(actionsEl){
+    if(allowBack){
+      if(!document.getElementById('kaspiBack')){
+        actionsEl.innerHTML='<button class="primary" id="kaspiBack" style="width:100%">'+t('Назад в корзину','Себетке қайту',"Back to cart")+'</button>';
+      }
+      document.getElementById('kaspiBack').onclick=openCart;
+      enableBackdropClose();
+    }else{
+      actionsEl.innerHTML='';
+    }
   }
 }
 async function startKaspiPayment(){
