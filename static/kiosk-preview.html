@@ -599,6 +599,8 @@ function refreshAvailabilityNotice(){
   var notice=document.getElementById('availabilityNotice');
   if(notice)notice.textContent=!availabilityReady
     ? t('Проверяем доступность. Если ожидание затянулось, обратитесь к кассиру.','Қолжетімділікті тексерудеміз. Күту ұзақ болса, кассирге хабарласыңыз.',"Checking availability. If this takes too long, please ask the cashier.")
+    : locationAvailability&&locationAvailability.testBypass
+      ? t('Тест Smart POS · заказ не будет отправлен в iiko/Webkassa','Smart POS тесті · тапсырыс iiko/Webkassa-ға жіберілмейді',"Smart POS test · nothing will be sent to iiko/Webkassa")
     : !ordersAvailable() ? t('Приём заказов временно остановлен','Тапсырыстар уақытша қабылданбайды',"Orders are temporarily unavailable")
     : t('Ожидание: ','Күту: ',"Estimated wait: ")+locationAvailability.pickupMinutes+t(' мин',' мин'," min");
   var button=document.getElementById('checkout');
@@ -644,6 +646,16 @@ async function loadStopList(){
     applyStopListData(data);
     return ordersAvailable();
   }catch(error){
+    if(KASPI_BRIDGE_TEST){
+      // Home Smart POS test must not be blocked by a temporary iiko/CRM
+      // availability outage. This bypass exists only when ?kaspiTest=1 is
+      // explicitly present and it never sends the order to iiko/Webkassa.
+      availabilityReady=true;
+      locationAvailability={acceptsOrders:true,pickupMinutes:0,testBypass:true};
+      availabilityCheckedAt=Date.now();
+      refreshAvailabilityNotice();
+      return true;
+    }
     availabilityReady=false;
     refreshAvailabilityNotice();
     closeModal();
