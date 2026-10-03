@@ -225,6 +225,8 @@ function kioskContextFromPath(){
   };
 }
 var KIOSK_CONTEXT=kioskContextFromPath();
+var KASPI_BRIDGE_TEST=(new URLSearchParams(window.location.search)).get('kaspiTest')==='1';
+var KASPI_BRIDGE_BASE=(new URLSearchParams(window.location.search)).get('bridge')||'http://127.0.0.1:8765';
 var MENU_CACHE_KEY='donerclub-kiosk-'+KIOSK_CONTEXT.key+'-menu-v3', MENU_CACHE_TTL=10*60*1000;
 var STOP_REFRESH_MS=30*1000;
 var CART_SESSION_KEY='donerclub-kiosk-'+KIOSK_CONTEXT.key+'-cart-v2';
@@ -1622,10 +1624,140 @@ async function openPay(){
     (discount>0?'<div style="display:flex;justify-content:space-between;gap:20px;color:#16843a;margin-top:6px"><span>'+t('Скидка '+crmWelcomePercent+'%','Жеңілдік '+crmWelcomePercent+'%',crmWelcomePercent+'% discount')+'</span><b>− '+money(discount)+'</b></div>':'')+
     '<div style="display:flex;justify-content:space-between;gap:20px;font-size:18px;margin-top:9px;padding-top:9px;border-top:1px solid #e7e2dc"><b>'+t('К оплате','Төлемге',"Amount due")+'</b><b>'+money(finalTotal)+'</b></div>'+
     '</div>';
-  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal"><h2>'+t('Способ оплаты','Төлем тәсілі',"Payment method")+'</h2><p class=lead>'+t('Тестовый режим: оплата Kaspi пока не подключена.','Тест режимі: Kaspi төлемі әлі қосылмаған.',"Demo mode: Kaspi payments are not connected yet.")+'</p>'+phoneNote+priceSummary+'<div class="paygrid"><button class="pay payChoice"><div style="font-size:42px">💳</div><b>Kaspi · '+t('Картой','Картамен',"Card")+'</b><span>'+t('Оплата банковской картой','Банк картасымен төлеу',"Pay by bank card")+'</span></button><button class="pay payChoice"><div style="font-size:42px">▦</div><b>Kaspi QR</b><span>'+t('QR на сумму '+money(finalTotal),'QR сомасы '+money(finalTotal),'QR for '+money(finalTotal))+'</span></button></div><div class="actions"><button class="secondary" id="backCart">'+t('Назад','Артқа',"Back")+'</button></div></div></div>';
+  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal"><h2>'+t('Способ оплаты','Төлем тәсілі',"Payment method")+'</h2><p class=lead>'+(KASPI_BRIDGE_TEST?t('Тест Smart POS: сумма будет отправлена на подключённый терминал. Заказ в iiko и Webkassa не отправляется.','Smart POS тесті: сома қосылған терминалға жіберіледі. Тапсырыс iiko және Webkassa-ға жіберілмейді.',"Smart POS test: the amount will be sent to the connected terminal. Nothing is sent to iiko or Webkassa."):t('Тестовый режим: оплата Kaspi пока не подключена.','Тест режимі: Kaspi төлемі әлі қосылмаған.',"Demo mode: Kaspi payments are not connected yet."))+'</p>'+phoneNote+priceSummary+'<div class="paygrid"><button class="pay payChoice"><div style="font-size:42px">💳</div><b>Kaspi · '+t('Картой','Картамен',"Card")+'</b><span>'+t('Оплата банковской картой','Банк картасымен төлеу',"Pay by bank card")+'</span></button><button class="pay payChoice"><div style="font-size:42px">▦</div><b>Kaspi QR</b><span>'+t('QR на сумму '+money(finalTotal),'QR сомасы '+money(finalTotal),'QR for '+money(finalTotal))+'</span></button></div><div class="actions"><button class="secondary" id="backCart">'+t('Назад','Артқа',"Back")+'</button></div></div></div>';
   enableBackdropClose();
   document.getElementById('backCart').onclick=openPhoneEntry;
-  document.querySelectorAll('.payChoice').forEach(function(b){b.onclick=showSuccess});
+  document.querySelectorAll('.payChoice').forEach(function(b){
+    b.onclick=KASPI_BRIDGE_TEST?startKaspiPayment:showSuccess;
+  });
+}
+
+function kaspiBridgeEndpoint(path){
+  return String(KASPI_BRIDGE_BASE||'http://127.0.0.1:8765').replace(/\/$/,'')+path;
+}
+function kaspiStatusLabel(subStatus){
+  var labels={
+    Initialize:t('Инициализация','Инициализация',"Initializing"),
+    WaitUser:t('Ожидание карты или QR','Карта немесе QR күтілуде',"Waiting for card or QR"),
+    WaitForQrConfirmation:t('Ожидание подтверждения QR','QR растауы күтілуде',"Waiting for QR confirmation"),
+    ProcessingCard:t('Обработка карты','Карта өңделуде',"Processing card"),
+    WaitForPinCode:t('Введите PIN на терминале','Терминалда PIN енгізіңіз',"Enter PIN on terminal"),
+    QrTransactionSuccess:t('QR оплачен','QR төленді',"QR paid"),
+    QrTransactionFailure:t('Ошибка QR-оплаты','QR төлем қатесі',"QR payment failed"),
+    CardTransactionSuccess:t('Карта оплачена','Карта төленді',"Card paid"),
+    CardTransactionFailure:t('Ошибка оплаты картой','Картамен төлеу қатесі',"Card payment failed"),
+    ProcessCancelled:t('Оплата отменена на терминале','Төлем терминалда тоқтатылды',"Payment cancelled on terminal")
+  };
+  return labels[subStatus]||subStatus||t('Ожидание ответа терминала','Терминал жауабы күтілуде',"Waiting for terminal");
+}
+function renderKaspiTestState(title,message,detail,allowBack){
+  document.getElementById('modalRoot').innerHTML=
+    '<div class="overlay"><div class="modal center">'+
+      '<h2>'+esc(title)+'</h2>'+
+      '<p class="lead">'+esc(message)+'</p>'+
+      (detail?'<div class="setup" style="margin:14px 0;font-weight:900">'+esc(detail)+'</div>':'')+
+      (allowBack?'<button class="primary" id="kaspiBack" style="width:100%">'+t('Назад в корзину','Себетке қайту',"Back to cart")+'</button>':'')+
+    '</div></div>';
+  if(allowBack){
+    document.getElementById('kaspiBack').onclick=openCart;
+    enableBackdropClose();
+  }
+}
+async function startKaspiPayment(){
+  if(!ordersAvailable()){closeModal();refreshAvailabilityNotice();return}
+  var amount=payableTotal();
+  if(!Number.isInteger(amount)||amount<=0){
+    renderKaspiTestState(
+      t('Не удалось начать оплату','Төлемді бастау мүмкін болмады',"Could not start payment"),
+      t('Kaspi Smart POS принимает сумму в целых тенге.','Kaspi Smart POS соманы бүтін теңгемен қабылдайды.',"Kaspi Smart POS requires a whole-tenge amount."),
+      t('Сумма: ','Сома: ',"Amount: ")+money(amount),
+      true
+    );
+    return;
+  }
+
+  renderKaspiTestState(
+    t('Отправляю сумму на Smart POS…','Сома Smart POS-қа жіберілуде…',"Sending amount to Smart POS…"),
+    t('Не закрывайте чёрное окно Doner Club Kaspi Bridge на этом компьютере.','Осы компьютердегі Doner Club Kaspi Bridge қара терезесін жаппаңыз.',"Keep the Doner Club Kaspi Bridge window open on this computer."),
+    money(amount),
+    false
+  );
+
+  try{
+    var response=await fetch(kaspiBridgeEndpoint('/api/payment/start'),{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({amount:amount}),
+      cache:'no-store'
+    });
+    var data=await response.json();
+    if(!response.ok||!data.ok||!data.processId)throw new Error(data.message||'Smart POS не запустил оплату');
+
+    renderKaspiTestState(
+      t('Оплата запущена','Төлем басталды',"Payment started"),
+      t('На Smart POS должна появиться сумма. Для этого теста ничего не оплачивайте — отмените операцию на самом терминале.','Smart POS-та сома шығуы тиіс. Бұл тест үшін төлем жасамаңыз — операцияны терминалдың өзінен тоқтатыңыз.',"The amount should appear on Smart POS. For this test, do not pay; cancel the operation on the terminal."),
+      money(amount),
+      false
+    );
+    pollKaspiPayment(data.processId,amount,Date.now());
+  }catch(error){
+    renderKaspiTestState(
+      t('Bridge не отвечает','Bridge жауап бермейді',"Bridge is not responding"),
+      t('Проверьте, что чёрное окно Doner Club Kaspi Bridge всё ещё открыто на этом компьютере.','Осы компьютерде Doner Club Kaspi Bridge қара терезесі ашық екенін тексеріңіз.',"Check that the Doner Club Kaspi Bridge window is still open on this computer."),
+      error&&error.message?error.message:String(error),
+      true
+    );
+  }
+}
+async function pollKaspiPayment(processId,amount,startedAt){
+  if(Date.now()-startedAt>250000){
+    renderKaspiTestState(
+      t('Тест остановлен по тайм-ауту','Тест тайм-аут бойынша тоқтатылды',"Test timed out"),
+      t('Заказ в iiko и Webkassa не отправлялся. Проверьте состояние операции на Smart POS.','Тапсырыс iiko және Webkassa-ға жіберілген жоқ. Операция күйін Smart POS-та тексеріңіз.',"Nothing was sent to iiko or Webkassa. Check the operation on Smart POS."),
+      '',
+      true
+    );
+    return;
+  }
+  try{
+    var response=await fetch(kaspiBridgeEndpoint('/api/payment/status?processId='+encodeURIComponent(processId)),{cache:'no-store'});
+    var data=await response.json();
+    if(!response.ok||!data.ok)throw new Error(data.message||'Не удалось получить статус');
+    var status=String(data.status||'').toLowerCase();
+    var detail=kaspiStatusLabel(data.subStatus);
+    if(status==='wait'){
+      renderKaspiTestState(
+        t('Ожидаю Smart POS','Smart POS күтілуде',"Waiting for Smart POS"),
+        t('Отмените тестовую оплату на самом терминале.','Тест төлемін терминалдың өзінен тоқтатыңыз.',"Cancel the test payment on the terminal."),
+        money(amount)+' · '+detail,
+        false
+      );
+      setTimeout(function(){pollKaspiPayment(processId,amount,startedAt)},1000);
+      return;
+    }
+    if(status==='success'){
+      renderKaspiTestState(
+        t('Оплата прошла','Төлем өтті',"Payment completed"),
+        t('Это тест: заказ в iiko и Webkassa НЕ отправлен. Если вы случайно оплатили, выполните возврат на Smart POS.','Бұл тест: тапсырыс iiko және Webkassa-ға ЖІБЕРІЛГЕН ЖОҚ. Егер кездейсоқ төлесеңіз, Smart POS-та қайтарым жасаңыз.',"This is a test: nothing was sent to iiko or Webkassa. If you paid accidentally, refund it on Smart POS."),
+        money(amount)+' · '+detail,
+        true
+      );
+      return;
+    }
+    renderKaspiTestState(
+      data.subStatus==='ProcessCancelled'?t('Тест успешно отменён','Тест сәтті тоқтатылды',"Test cancelled successfully"):t('Операция завершена без оплаты','Операция төлемсіз аяқталды',"Operation ended without payment"),
+      t('Деньги не должны быть списаны. Заказ в iiko и Webkassa не отправлялся.','Ақша есептен шығарылмауы тиіс. Тапсырыс iiko және Webkassa-ға жіберілген жоқ.',"No money should have been charged. Nothing was sent to iiko or Webkassa."),
+      detail+(data.message?' · '+data.message:''),
+      true
+    );
+  }catch(error){
+    renderKaspiTestState(
+      t('Не удалось получить статус Smart POS','Smart POS күйін алу мүмкін болмады',"Could not get Smart POS status"),
+      t('Заказ в iiko и Webkassa не отправлялся.','Тапсырыс iiko және Webkassa-ға жіберілген жоқ.',"Nothing was sent to iiko or Webkassa."),
+      error&&error.message?error.message:String(error),
+      true
+    );
+  }
 }
 function showSuccess(){
   if(!ordersAvailable()){closeModal();refreshAvailabilityNotice();return;}
