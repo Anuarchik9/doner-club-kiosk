@@ -17,6 +17,14 @@ SMART_POS_PORT = int(os.getenv("SMART_POS_PORT", "8080"))
 CASH_REGISTER_NAME = os.getenv("CASH_REGISTER_NAME", "DonerClubHomeTest").strip()
 BRIDGE_HOST = os.getenv("BRIDGE_HOST", "127.0.0.1").strip()
 BRIDGE_PORT = int(os.getenv("BRIDGE_PORT", "8765"))
+BRIDGE_ALLOWED_ORIGINS = {
+    origin.strip()
+    for origin in os.getenv(
+        "BRIDGE_ALLOWED_ORIGINS",
+        "https://kiosk.donerclub.kz,https://doner-club-kiosk.onrender.com,http://127.0.0.1:8765,http://localhost:8765",
+    ).split(",")
+    if origin.strip()
+}
 
 DATA_DIR = Path(os.getenv(
     "KASPI_BRIDGE_DATA_DIR",
@@ -30,6 +38,23 @@ HTTP = requests.Session()
 HTTP.verify = False
 
 app = Flask(__name__)
+
+@app.after_request
+def add_bridge_cors_headers(response):
+    origin = request.headers.get("Origin")
+    if origin and origin in BRIDGE_ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        # Chrome Private Network Access preflights use this header when a
+        # public HTTPS kiosk page talks to the loopback bridge.
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
+
+@app.route("/api/<path:_path>", methods=["OPTIONS"])
+def bridge_preflight(_path):
+    return ("", 204)
 
 PAGE = """<!doctype html>
 <html lang="ru">
@@ -96,6 +121,22 @@ def smart_get(path, *, params=None, token=None, timeout=20):
     if token:
         headers["accesstoken"] = token
     return HTTP.get(BASE_URL + path, params=params or {}, headers=headers, timeout=timeout)
+
+def smart_device_info(access_token):
+    response = smart_get("/v2/deviceinfo", token=access_token, timeout=20)
+    payload = response.json()
+    data = extract_data(payload)
+    if not response.ok or payload.get("statusCode") != 0:
+        raise RuntimeError(f"deviceinfo failed: {payload}")
+    terminal_id = str(
+        data.get("terminalId")
+        or data.get("terminalID")
+        or data.get("id")
+        or ""
+    ).strip()
+    if not terminal_id:
+        raise RuntimeError("Smart POS did not return terminalId")
+    return payload, terminal_id
 
 def local_ip():
     try:
@@ -225,20 +266,102 @@ def device():
     if not access_token:
         return jsonify({"ok": False, "message": "Сначала зарегистрируйте кассу."}), 401
     try:
-        response = smart_get("/v2/deviceinfo", token=access_token, timeout=20)
-        payload = response.json()
-        if response.status_code in (401, 403):
+        payload, terminal_id = smart_device_info(access_token)
+        tokens["terminalId"] = terminal_id
+        save_tokens(tokens)
+        return jsonify({
+            "ok": True,
+            "terminalId": terminal_id,
+            "response": payload,
+        })
+    except Exception as error:
+        return jsonify({"ok": False, "message": "Ошибка запроса deviceinfo.", "details": str(error)}), 500
+
+@app.post("/api/payment/start")
+def payment_start():
+    tokens = load_tokens()
+    access_token = tokens.get("accessToken")
+    if not access_token:
+        return jsonify({"ok": False, "message": "Сначала зарегистрируйте кассу."}), 401
+
+    body = request.get_json(silent=True) or {}
+    try:
+        amount = int(body.get("amount"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "Сумма должна быть целым числом тенге."}), 400
+
+    if amount <= 0:
+        return jsonify({"ok": False, "message": "Сумма должна быть больше 0 ₸."}), 400
+    if amount > 500000:
+        return jsonify({"ok": False, "message": "Тестовый лимит Bridge: 500 000 ₸."}), 400
+
+    try:
+        payload, terminal_id = smart_device_info(access_token)
+        tokens["terminalId"] = terminal_id
+        save_tokens(tokens)
+
+        response = smart_get(
+            "/v2/payment",
+            params={"amount": amount, "owncheque": "true"},
+            token=access_token,
+            timeout=30,
+        )
+        payment_payload = response.json()
+        data = extract_data(payment_payload)
+        process_id = str(data.get("processId") or "").strip()
+        if response.ok and payment_payload.get("statusCode") == 0 and process_id:
             return jsonify({
-                "ok": False,
-                "message": "Токен недействителен или истёк. Нажмите «Обновить токен».",
-                "response": payload,
-            }), response.status_code
+                "ok": True,
+                "amount": amount,
+                "processId": process_id,
+                "status": data.get("status"),
+                "terminalId": terminal_id,
+                "message": "Оплата запущена на Smart POS. Заказ в iiko/Webkassa не отправляется.",
+            })
+        return jsonify({
+            "ok": False,
+            "message": "Smart POS не запустил оплату.",
+            "response": payment_payload,
+        }), 400
+    except Exception as error:
+        return jsonify({"ok": False, "message": "Ошибка запуска оплаты.", "details": str(error)}), 500
+
+@app.get("/api/payment/status")
+def payment_status():
+    tokens = load_tokens()
+    access_token = tokens.get("accessToken")
+    if not access_token:
+        return jsonify({"ok": False, "message": "Сначала зарегистрируйте кассу."}), 401
+
+    process_id = str(request.args.get("processId") or "").strip()
+    if not process_id:
+        return jsonify({"ok": False, "message": "Не передан processId."}), 400
+
+    try:
+        terminal_id = str(tokens.get("terminalId") or "").strip()
+        if not terminal_id:
+            _, terminal_id = smart_device_info(access_token)
+            tokens["terminalId"] = terminal_id
+            save_tokens(tokens)
+
+        response = HTTP.get(
+            BASE_URL + "/v2/status",
+            params={"processId": process_id},
+            headers={"accesstoken": access_token, "terminalId": terminal_id},
+            timeout=20,
+        )
+        payload = response.json()
+        data = extract_data(payload)
         return jsonify({
             "ok": response.ok and payload.get("statusCode") == 0,
+            "processId": process_id,
+            "status": data.get("status"),
+            "subStatus": data.get("subStatus"),
+            "message": data.get("message"),
             "response": payload,
         }), response.status_code
     except Exception as error:
-        return jsonify({"ok": False, "message": "Ошибка запроса deviceinfo.", "details": str(error)}), 500
+        return jsonify({"ok": False, "message": "Ошибка запроса статуса оплаты.", "details": str(error)}), 500
 
 if __name__ == "__main__":
     print("=" * 64)
