@@ -1393,40 +1393,58 @@ def iiko_webhook():
         return jsonify(success=False, code="UNAUTHORIZED"), 401
 
     payload = request.get_json(silent=True)
-    if not isinstance(payload, dict):
+    if payload is None:
+        # iiko may omit/alter Content-Type while still sending valid JSON.
+        # Parse the raw body as a fallback.
+        raw = request.get_data(cache=True, as_text=True)
+        try:
+            payload = json.loads(raw) if raw else None
+        except (TypeError, ValueError):
+            payload = None
+
+    # iikoCloud webhook notifications are delivered as a JSON array, even when
+    # there is only one event. Keep dict support for manual diagnostics.
+    if isinstance(payload, list):
+        events = [item for item in payload if isinstance(item, dict)]
+    elif isinstance(payload, dict):
+        events = [payload]
+    else:
         return jsonify(success=False, code="INVALID_JSON"), 400
 
-    organization_id = str(payload.get("organizationId") or "").strip()
-    point_code = IIKO_WEBHOOK_POINTS.get(organization_id.casefold())
-    if not point_code:
-        # Acknowledge unrelated events so iiko does not retry them.
-        return jsonify(success=True, ignored=True)
+    tracked = 0
+    ignored = 0
+    for event in events:
+        organization_id = str(event.get("organizationId") or "").strip()
+        point_code = IIKO_WEBHOOK_POINTS.get(organization_id.casefold())
+        if not point_code:
+            ignored += 1
+            continue
 
-    event_type = str(payload.get("eventType") or "").strip()
-    event_info = payload.get("eventInfo") if isinstance(payload.get("eventInfo"), dict) else {}
-    order = event_info.get("order") if isinstance(event_info.get("order"), dict) else {}
-    guest_stage, item_statuses = _guest_kitchen_stage(order)
+        event_type = str(event.get("eventType") or "").strip()
+        event_info = event.get("eventInfo") if isinstance(event.get("eventInfo"), dict) else {}
+        order = event_info.get("order") if isinstance(event_info.get("order"), dict) else {}
+        guest_stage, item_statuses = _guest_kitchen_stage(order)
 
-    diagnostic = {
-        "eventType": event_type,
-        "point": point_code,
-        "organizationId": organization_id,
-        "orderId": event_info.get("id"),
-        "posId": event_info.get("posId"),
-        "externalNumber": event_info.get("externalNumber"),
-        "creationStatus": event_info.get("creationStatus"),
-        "orderStatus": order.get("status"),
-        "itemStatuses": item_statuses,
-        "guestStage": guest_stage,
-    }
-    print(
-        "IIKO_WEBHOOK_EVENT " + json.dumps(diagnostic, ensure_ascii=False, separators=(",", ":")),
-        flush=True,
-    )
+        diagnostic = {
+            "eventType": event_type,
+            "point": point_code,
+            "organizationId": organization_id,
+            "orderId": event_info.get("id"),
+            "posId": event_info.get("posId"),
+            "externalNumber": event_info.get("externalNumber"),
+            "creationStatus": event_info.get("creationStatus"),
+            "orderStatus": order.get("status"),
+            "itemStatuses": item_statuses,
+            "guestStage": guest_stage,
+        }
+        print(
+            "IIKO_WEBHOOK_EVENT " + json.dumps(diagnostic, ensure_ascii=False, separators=(",", ":")),
+            flush=True,
+        )
+        tracked += 1
 
-    # Telegram delivery is intentionally not triggered yet. First we record real
-    # kitchen events from Arai/Republic to verify the exact status sequence.
-    return jsonify(success=True)
+    # Telegram delivery stays disabled until we confirm the real KDS sequence.
+    return jsonify(success=True, received=len(events), tracked=tracked, ignored=ignored)
 
 
 
