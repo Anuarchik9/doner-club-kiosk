@@ -1281,12 +1281,14 @@ def _live_kiosk_payments_enabled():
 
 @app.get("/kiosk-payment-readiness")
 def kiosk_payment_readiness():
+    bridge_token_configured = bool(str(os.environ.get("KIOSK_BRIDGE_ORDER_TOKEN") or "").strip())
+    iiko_configured = bool(os.environ.get("IIKO_KIOSK_API_KEY"))
     return jsonify(
         success=True,
-        ready=_live_kiosk_payments_enabled(),
+        ready=_live_kiosk_payments_enabled() and iiko_configured and bridge_token_configured,
         point="RESPUBLIKA",
-        iikoConfigured=bool(os.environ.get("IIKO_KIOSK_API_KEY")),
-        bridgeTokenRequired=bool(str(os.environ.get("KIOSK_BRIDGE_ORDER_TOKEN") or "").strip()),
+        iikoConfigured=iiko_configured,
+        bridgeTokenRequired=bridge_token_configured,
     )
 
 
@@ -1358,13 +1360,19 @@ def kiosk_paid_order():
     if not isinstance(data, dict):
         return jsonify(success=False, code="INVALID_KIOSK_ORDER", message="JSON object required."), 400
 
-    # Optional bridge authentication. Once KIOSK_BRIDGE_ORDER_TOKEN is configured
-    # on Render, the local Republic bridge must forward this header.
+    # Production paid orders must arrive through the Republic LAN bridge.
+    # The bridge injects the shared secret server-side; it is never exposed in kiosk JavaScript.
     expected_bridge_token = str(os.environ.get("KIOSK_BRIDGE_ORDER_TOKEN") or "").strip()
-    if expected_bridge_token:
-        supplied_bridge_token = str(request.headers.get("X-Kiosk-Bridge-Token") or "").strip()
-        if not supplied_bridge_token or not hmac.compare_digest(expected_bridge_token, supplied_bridge_token):
-            return jsonify(success=False, code="BRIDGE_UNAUTHORIZED"), 401
+    if not expected_bridge_token:
+        return jsonify(
+            success=False,
+            code="BRIDGE_TOKEN_NOT_CONFIGURED",
+            message="Live kiosk payments require the Republic bridge token.",
+        ), 503
+
+    supplied_bridge_token = str(request.headers.get("X-Kiosk-Bridge-Token") or "").strip()
+    if not supplied_bridge_token or not hmac.compare_digest(expected_bridge_token, supplied_bridge_token):
+        return jsonify(success=False, code="BRIDGE_UNAUTHORIZED"), 401
 
     point = str(data.get("point") or "RESPUBLIKA").strip()
     process_id = str(data.get("paymentProcessId") or "").strip()
