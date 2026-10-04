@@ -1423,6 +1423,26 @@ def iiko_webhook():
     return jsonify(success=True)
 
 
+
+def _log_arai_department_once():
+    time.sleep(10)
+    try:
+        department, _ = find_department("Arai")
+        print(
+            "ARAI_DEPARTMENT " + json.dumps({
+                "organizationId": (department or {}).get("organizationId"),
+                "code": (department or {}).get("code"),
+                "name": (department or {}).get("name"),
+            }, ensure_ascii=False, separators=(",", ":")),
+            flush=True,
+        )
+    except Exception as error:
+        print("ARAI_DEPARTMENT_ERROR " + str(error), flush=True)
+
+
+threading.Thread(target=_log_arai_department_once, daemon=True).start()
+
+
 @app.post("/kiosk-crm-register")
 def kiosk_crm_register():
     payload = request.get_json(silent=True) or {}
