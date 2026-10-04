@@ -2098,10 +2098,12 @@ def call_centre_discounts():
         return jsonify(success=False, code="CALL_CENTRE_UNAUTHORIZED"), 401
     point = str(request.args.get("point") or "RESPUBLIKA").strip()
     try:
-        target, error_payload, status_code = _resolve_kiosk_order_target(point)
-        if error_payload:
-            return jsonify(error_payload), status_code
-        rows, error = _call_centre_discounts(target["organizationId"])
+        department, _ = find_department(point)
+        if not department:
+            return jsonify(success=False, code="POINT_NOT_FOUND"), 404
+        # Discounts are organization-scoped; terminal/table discovery is only
+        # required when submitting an order, not when loading the selector.
+        rows, error = _call_centre_discounts(department["organizationId"])
         if error:
             return jsonify(success=False, **error), 502
         return jsonify(
