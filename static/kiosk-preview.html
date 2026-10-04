@@ -225,8 +225,16 @@ function kioskContextFromPath(){
   };
 }
 var KIOSK_CONTEXT=kioskContextFromPath();
-var KASPI_BRIDGE_TEST=(new URLSearchParams(window.location.search)).get('kaspiTest')==='1';
-var KASPI_BRIDGE_BASE=(new URLSearchParams(window.location.search)).get('bridge')||'http://127.0.0.1:8765';
+var KIOSK_QUERY=new URLSearchParams(window.location.search);
+var KIOSK_PAYMENT_DEMO=KIOSK_QUERY.get('demo')==='1';
+var bridgeParam=String(KIOSK_QUERY.get('bridge')||'').trim();
+if(bridgeParam){
+  try{localStorage.setItem('donerclub-kaspi-bridge',bridgeParam)}catch(e){}
+}
+var savedBridge='';
+try{savedBridge=String(localStorage.getItem('donerclub-kaspi-bridge')||'').trim()}catch(e){}
+var runningInsideBridge=String(window.location.port||'')==='8765';
+var KASPI_BRIDGE_BASE=runningInsideBridge?window.location.origin:(bridgeParam||savedBridge||'http://127.0.0.1:8765');
 var MENU_CACHE_KEY='donerclub-kiosk-'+KIOSK_CONTEXT.key+'-menu-v3', MENU_CACHE_TTL=10*60*1000;
 var STOP_REFRESH_MS=60*1000;
 var CART_SESSION_KEY='donerclub-kiosk-'+KIOSK_CONTEXT.key+'-cart-v2';
@@ -247,8 +255,8 @@ function categoryName(c){return lang==='en'?(CAT_EN[c.name]||c.name):lang==='kz'
 function productName(p){return p.name}
 function count(){return cart.reduce(function(s,x){return s+x.q},0)}
 function total(){return cart.reduce(function(s,x){return s+x.q*x.unitPrice},0)}
-function welcomeDiscountAmount(){return crmWelcomeEligible?Number((total()*(Number(crmWelcomePercent)||0)/100).toFixed(2)):0}
-function payableTotal(){return Math.max(0,Number((total()-welcomeDiscountAmount()).toFixed(2)))}
+function welcomeDiscountAmount(){return crmWelcomeEligible?Math.round(total()*(Number(crmWelcomePercent)||0)/100):0}
+function payableTotal(){return Math.max(0,Math.round(total()-welcomeDiscountAmount()))}
 function resetCrmDiscount(){crmWelcomeEligible=false;crmWelcomePercent=0;crmCustomerExists=false;crmLookupReady=false}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]})}
 
@@ -1290,13 +1298,12 @@ function openCart(){
       '<div class="cartModalHead"><div><h2>'+t('Ваш заказ','Сіздің тапсырысыңыз',"Your order")+'</h2><div class="cartSummary">'+t('Проверьте выбранные блюда перед оплатой','Төлемге дейін таңдалған тағамдарды тексеріңіз',"Check your items before payment")+'</div></div><div class="cartGrandTotal">'+money(total())+'</div></div>'+
       '<div id="cartLines" class="cartItemsBox"></div>'+
       '<div id="recommendWrap" class="recommendWrap"></div>'+
-      '<div class="cartFooter"><div class="actions"><button class="secondary" id="closeModal">'+t('Продолжить выбор','Таңдауды жалғастыру',"Keep browsing")+'</button><button class="testIikoBtn" id="testIikoBtn">'+t('Тест в iiko','iiko тесті',"iiko test")+'</button><button class="primary" id="goPay">'+t('Оплатить','Төлеу',"Pay")+' · '+money(total())+'</button></div></div>'+
+      '<div class="cartFooter"><div class="actions"><button class="secondary" id="closeModal">'+t('Продолжить выбор','Таңдауды жалғастыру',"Keep browsing")+'</button><button class="primary" id="goPay">'+t('Оплатить','Төлеу',"Pay")+' · '+money(total())+'</button></div></div>'+
     '</div></div>';
   enableBackdropClose();
   paintCartLines();
   document.getElementById('closeModal').onclick=closeModal;
   document.getElementById('cartClose').onclick=closeModal;
-  document.getElementById('testIikoBtn').onclick=openTestIiko;
   document.getElementById('goPay').onclick=openPhoneEntry;
 }
 function refreshCartModalView(){
@@ -1393,6 +1400,58 @@ function testOrderItemsPayload(){
     return item;
   }).filter(function(x){return x.productId&&x.amount>0});
 }
+function productionOrderItemsPayload(){
+  var discount=welcomeDiscountAmount();
+  var paidTotal=payableTotal();
+  var subtotal=total();
+  var remaining=paidTotal;
+
+  return cart.map(function(x,index){
+    var modifiers=(x.modifierIds||[]).map(function(id,modifierIndex){
+      var modifier={productId:id,amount:1};
+      var groupId=(x.modifierGroupIds||[])[modifierIndex];
+      if(groupId)modifier.productGroupId=groupId;
+      if(discount>0)modifier.price=0;
+      return modifier;
+    });
+
+    var item={
+      productId:x.itemId,
+      amount:x.q
+    };
+    if(x.sizeId)item.productSizeId=x.sizeId;
+    if(modifiers.length)item.modifiers=modifiers;
+
+    // When our first-order discount is active, keep the paid amount and the
+    // iiko order total identical. The line price includes its modifiers; paid
+    // modifiers are set to zero for this discounted order only.
+    if(discount>0&&subtotal>0){
+      var rawLine=Number(x.unitPrice||0)*Number(x.q||0);
+      var linePaid=index===cart.length-1
+        ? remaining
+        : Math.max(0,Math.round(paidTotal*rawLine/subtotal));
+      remaining-=linePaid;
+      item.price=Number((linePaid/Math.max(1,Number(x.q)||1)).toFixed(4));
+    }
+    return item;
+  }).filter(function(x){return x.productId&&x.amount>0});
+}
+
+function paidOrderRequestPayload(processId,subStatus){
+  return {
+    point:KIOSK_CONTEXT.point,
+    paymentProcessId:String(processId||''),
+    paymentSubStatus:String(subStatus||''),
+    paymentSum:payableTotal(),
+    subtotal:total(),
+    discountAmount:welcomeDiscountAmount(),
+    discountPercent:crmWelcomeEligible?Number(crmWelcomePercent||0):0,
+    phone:customerPhone||'',
+    orderMode:orderMode||'',
+    items:productionOrderItemsPayload()
+  };
+}
+
 function openTestIiko(){
   if(!cart.length)return;
   document.getElementById('modalRoot').innerHTML=
@@ -1587,9 +1646,10 @@ function openPhoneEntry(){
     resetCrmDiscount();
     openPay();
   };
-  document.getElementById('phoneContinue').onclick=function(){
+  document.getElementById('phoneContinue').onclick=async function(){
     var digits=phoneDigitsOnly(customerPhone);
     var hint=document.getElementById('phoneHint');
+    var continueBtn=document.getElementById('phoneContinue');
     if(digits.length!==10){
       if(hint){
         hint.className='phoneHint error';
@@ -1599,21 +1659,40 @@ function openPhoneEntry(){
     }
 
     customerPhone='+7'+digits;
+    resetCrmDiscount();
+    if(continueBtn)continueBtn.disabled=true;
+    if(hint){
+      hint.className='phoneHint';
+      hint.textContent=t('Проверяем скидку…','Жеңілдік тексерілуде…',"Checking discount…");
+    }
 
-    // Номер сразу даёт приветственную скидку и не задерживает гостя.
-    crmCustomerExists=false;
-    crmLookupReady=true;
-    crmWelcomeEligible=true;
-    crmWelcomePercent=5;
+    try{
+      var lookupResponse=await fetch('/kiosk-crm-customer?phone='+encodeURIComponent(customerPhone),{cache:'no-store'});
+      var lookup=await lookupResponse.json();
+      if(!lookupResponse.ok||!lookup.success)throw lookup;
 
-    // Регистрация идёт в фоне: новый номер создаётся в CRM без имени.
-    fetch('/kiosk-crm-register',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({phone:customerPhone}),
-      cache:'no-store',
-      keepalive:true
-    }).catch(function(){});
+      crmCustomerExists=!!lookup.exists;
+      crmLookupReady=true;
+      var welcome=lookup.welcomeDiscount||{};
+      crmWelcomeEligible=!!welcome.eligible;
+      crmWelcomePercent=crmWelcomeEligible?Number(welcome.percent||0):0;
+
+      if(!crmCustomerExists){
+        fetch('/kiosk-crm-register',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({phone:customerPhone}),
+          cache:'no-store',
+          keepalive:true
+        }).catch(function(){});
+      }
+    }catch(error){
+      // Never grant a financial discount if eligibility cannot be verified.
+      crmCustomerExists=false;
+      crmLookupReady=false;
+      crmWelcomeEligible=false;
+      crmWelcomePercent=0;
+    }
 
     openPay();
   };
@@ -1636,11 +1715,14 @@ async function openPay(){
     (discount>0?'<div style="display:flex;justify-content:space-between;gap:20px;color:#16843a;margin-top:6px"><span>'+t('Скидка '+crmWelcomePercent+'%','Жеңілдік '+crmWelcomePercent+'%',crmWelcomePercent+'% discount')+'</span><b>− '+money(discount)+'</b></div>':'')+
     '<div style="display:flex;justify-content:space-between;gap:20px;font-size:18px;margin-top:9px;padding-top:9px;border-top:1px solid #e7e2dc"><b>'+t('К оплате','Төлемге',"Amount due")+'</b><b>'+money(finalTotal)+'</b></div>'+
     '</div>';
-  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal"><h2>'+t('Способ оплаты','Төлем тәсілі',"Payment method")+'</h2><p class=lead>'+(KASPI_BRIDGE_TEST?t('Тест Smart POS: сумма будет отправлена на подключённый терминал. Заказ в iiko и Webkassa не отправляется.','Smart POS тесті: сома қосылған терминалға жіберіледі. Тапсырыс iiko және Webkassa-ға жіберілмейді.',"Smart POS test: the amount will be sent to the connected terminal. Nothing is sent to iiko or Webkassa."):t('Тестовый режим: оплата Kaspi пока не подключена.','Тест режимі: Kaspi төлемі әлі қосылмаған.',"Demo mode: Kaspi payments are not connected yet."))+'</p>'+phoneNote+priceSummary+'<div class="paygrid"><button class="pay payChoice"><div style="font-size:42px">💳</div><b>Kaspi · '+t('Картой','Картамен',"Card")+'</b><span>'+t('Оплата банковской картой','Банк картасымен төлеу',"Pay by bank card")+'</span></button><button class="pay payChoice"><div style="font-size:42px">▦</div><b>Kaspi QR</b><span>'+t('QR на сумму '+money(finalTotal),'QR сомасы '+money(finalTotal),'QR for '+money(finalTotal))+'</span></button></div><div class="actions"><button class="secondary" id="backCart">'+t('Назад','Артқа',"Back")+'</button></div></div></div>';
+  var lead=KIOSK_PAYMENT_DEMO
+    ? t('Демонстрационный режим оплаты.','Төлемнің демонстрациялық режимі.',"Payment demo mode.")
+    : t('Выберите способ оплаты. Сумма появится на Smart POS.','Төлем тәсілін таңдаңыз. Сома Smart POS-та пайда болады.',"Choose a payment method. The amount will appear on Smart POS.");
+  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal"><h2>'+t('Способ оплаты','Төлем тәсілі',"Payment method")+'</h2><p class=lead>'+lead+'</p>'+phoneNote+priceSummary+'<div class="paygrid"><button class="pay payChoice"><div style="font-size:42px">💳</div><b>Kaspi · '+t('Картой','Картамен',"Card")+'</b><span>'+t('Оплата банковской картой','Банк картасымен төлеу',"Pay by bank card")+'</span></button><button class="pay payChoice"><div style="font-size:42px">▦</div><b>Kaspi QR</b><span>'+t('QR на сумму '+money(finalTotal),'QR сомасы '+money(finalTotal),'QR for '+money(finalTotal))+'</span></button></div><div class="actions"><button class="secondary" id="backCart">'+t('Назад','Артқа',"Back")+'</button></div></div></div>';
   enableBackdropClose();
   document.getElementById('backCart').onclick=openPhoneEntry;
-  document.querySelectorAll('.payChoice').forEach(function(b){
-    b.onclick=KASPI_BRIDGE_TEST?startKaspiPayment:showSuccess;
+  document.querySelectorAll('.payChoice').forEach(function(button){
+    button.onclick=KIOSK_PAYMENT_DEMO?showDemoSuccess:startKaspiPayment;
   });
 }
 
@@ -1703,11 +1785,34 @@ function renderKaspiTestState(title,message,detail,allowBack){
 }
 async function startKaspiPayment(){
   if(!ordersAvailable()){closeModal();refreshAvailabilityNotice();return}
+
+  try{
+    var readinessResponse=await fetch('/kiosk-payment-readiness',{cache:'no-store'});
+    var readiness=await readinessResponse.json();
+    if(!readinessResponse.ok||!readiness.success||!readiness.ready){
+      renderKaspiTestState(
+        t('Оплата ещё не активирована','Төлем әлі іске қосылмаған',"Payments are not activated yet"),
+        t('Киоск подготовлен к работе. Финальное включение оплаты выполняется на точке после проверки связи с Smart POS и iiko.','Киоск жұмысқа дайын. Төлем Smart POS және iiko байланысы тексерілгеннен кейін нүктеде қосылады.',"The kiosk is prepared. Payments are enabled on-site after Smart POS and iiko connectivity are verified."),
+        '',
+        true
+      );
+      return;
+    }
+  }catch(error){
+    renderKaspiTestState(
+      t('Не удалось проверить готовность оплаты','Төлем дайындығын тексеру мүмкін болмады',"Could not verify payment readiness"),
+      t('Оплата не началась. Попробуйте ещё раз или обратитесь к кассиру.','Төлем басталмады. Қайталап көріңіз немесе кассирге хабарласыңыз.',"Payment did not start. Try again or ask the cashier."),
+      '',
+      true
+    );
+    return;
+  }
+
   var amount=payableTotal();
   if(!Number.isInteger(amount)||amount<=0){
     renderKaspiTestState(
       t('Не удалось начать оплату','Төлемді бастау мүмкін болмады',"Could not start payment"),
-      t('Kaspi Smart POS принимает сумму в целых тенге.','Kaspi Smart POS соманы бүтін теңгемен қабылдайды.',"Kaspi Smart POS requires a whole-tenge amount."),
+      t('Сумма оплаты должна быть целым числом тенге.','Төлем сомасы бүтін теңгемен болуы керек.',"The payment amount must be a whole number of tenge."),
       t('Сумма: ','Сома: ',"Amount: ")+money(amount),
       true
     );
@@ -1715,8 +1820,8 @@ async function startKaspiPayment(){
   }
 
   renderKaspiTestState(
-    t('Отправляю сумму на Smart POS…','Сома Smart POS-қа жіберілуде…',"Sending amount to Smart POS…"),
-    t('Не закрывайте чёрное окно Doner Club Kaspi Bridge на этом компьютере.','Осы компьютердегі Doner Club Kaspi Bridge қара терезесін жаппаңыз.',"Keep the Doner Club Kaspi Bridge window open on this computer."),
+    t('Отправляю сумму на терминал…','Сома терминалға жіберілуде…',"Sending amount to terminal…"),
+    t('Подождите несколько секунд.','Бірнеше секунд күтіңіз.',"Please wait a few seconds."),
     money(amount),
     false
   );
@@ -1732,26 +1837,76 @@ async function startKaspiPayment(){
     if(!response.ok||!data.ok||!data.processId)throw new Error(data.message||'Smart POS не запустил оплату');
 
     renderKaspiTestState(
-      t('Оплата запущена','Төлем басталды',"Payment started"),
-      t('На Smart POS должна появиться сумма. Для этого теста ничего не оплачивайте — отмените операцию на самом терминале.','Smart POS-та сома шығуы тиіс. Бұл тест үшін төлем жасамаңыз — операцияны терминалдың өзінен тоқтатыңыз.',"The amount should appear on Smart POS. For this test, do not pay; cancel the operation on the terminal."),
+      t('Оплатите заказ','Тапсырысты төлеңіз',"Pay for your order"),
+      t('Следуйте подсказкам на Smart POS.','Smart POS нұсқауларын орындаңыз.',"Follow the instructions on Smart POS."),
       money(amount),
       false
     );
     pollKaspiPayment(data.processId,amount,Date.now());
   }catch(error){
     renderKaspiTestState(
-      t('Bridge не отвечает','Bridge жауап бермейді',"Bridge is not responding"),
-      t('Проверьте, что чёрное окно Doner Club Kaspi Bridge всё ещё открыто на этом компьютере.','Осы компьютерде Doner Club Kaspi Bridge қара терезесі ашық екенін тексеріңіз.',"Check that the Doner Club Kaspi Bridge window is still open on this computer."),
+      t('Терминал недоступен','Терминал қолжетімсіз',"Terminal unavailable"),
+      t('Оплата не началась. Обратитесь к кассиру или попробуйте ещё раз.','Төлем басталмады. Кассирге хабарласыңыз немесе қайталап көріңіз.',"Payment did not start. Ask the cashier or try again."),
       error&&error.message?error.message:String(error),
       true
     );
   }
 }
+
+async function submitPaidOrder(processId,amount,subStatus){
+  renderKaspiTestState(
+    t('Оплата прошла','Төлем өтті',"Payment completed"),
+    t('Передаём заказ на кухню…','Тапсырыс ас үйге жіберілуде…',"Sending your order to the kitchen…"),
+    money(amount),
+    false
+  );
+  try{
+    var response=await fetch('/kiosk-paid-order',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(paidOrderRequestPayload(processId,subStatus)),
+      cache:'no-store'
+    });
+    var data=await response.json();
+    if(!response.ok||!data.success)throw data;
+
+    var order=data.order||{};
+    var number=order.number||data.externalNumber||'';
+    document.getElementById('modalRoot').innerHTML=
+      '<div class="overlay"><div class="modal center">'+
+        '<div class="success">✓</div>'+
+        '<h2>'+t('Заказ принят','Тапсырыс қабылданды',"Order accepted")+'</h2>'+
+        '<p class="lead">'+t('Оплата прошла, заказ передан на кухню.','Төлем өтті, тапсырыс ас үйге жіберілді.',"Payment completed and your order was sent to the kitchen.")+'</p>'+
+        (number?'<div class="setup" style="margin:14px 0;font-size:18px"><b>'+t('Заказ №','Тапсырыс №',"Order #")+esc(number)+'</b></div>':'')+
+        '<button class="primary" id="finishPaidOrder" style="width:100%">'+t('Готово','Дайын',"Done")+'</button>'+
+      '</div></div>';
+    var finish=document.getElementById('finishPaidOrder');
+    finish.onclick=function(){
+      cart=[];customerPhone='';resetCrmDiscount();
+      try{sessionStorage.removeItem(CART_SESSION_KEY)}catch(e){}
+      closeModal();updateCart();refreshCardActions();returnToWelcome();
+    };
+  }catch(error){
+    var detail=error&&((error.message)||(error.code)||(error.details))||'';
+    renderKaspiTestState(
+      t('Оплата прошла, заказ требует проверки','Төлем өтті, тапсырысты тексеру қажет',"Payment completed — order needs checking"),
+      t('Не оплачивайте заказ повторно. Обратитесь к кассиру: мы сохранили тот же номер операции и можем повторить отправку без повторной оплаты.','Тапсырысты қайта төлемеңіз. Кассирге хабарласыңыз: операция нөмірі сақталды және төлемсіз қайта жіберуге болады.',"Do not pay again. Ask the cashier: the payment operation is preserved and the order can be resent without another charge."),
+      detail?String(detail):money(amount),
+      false
+    );
+    var actions=document.getElementById('kaspiStateActions');
+    if(actions){
+      actions.innerHTML='<button class="primary" id="retryPaidOrder" style="width:100%">'+t('Повторить отправку заказа','Тапсырысты қайта жіберу',"Retry sending order")+'</button>';
+      document.getElementById('retryPaidOrder').onclick=function(){submitPaidOrder(processId,amount,subStatus)};
+    }
+  }
+}
+
 async function pollKaspiPayment(processId,amount,startedAt){
   if(Date.now()-startedAt>250000){
     renderKaspiTestState(
-      t('Тест остановлен по тайм-ауту','Тест тайм-аут бойынша тоқтатылды',"Test timed out"),
-      t('Заказ в iiko и Webkassa не отправлялся. Проверьте состояние операции на Smart POS.','Тапсырыс iiko және Webkassa-ға жіберілген жоқ. Операция күйін Smart POS-та тексеріңіз.',"Nothing was sent to iiko or Webkassa. Check the operation on Smart POS."),
+      t('Время ожидания истекло','Күту уақыты аяқталды',"Payment timed out"),
+      t('Проверьте состояние операции на Smart POS. Если деньги списались — не оплачивайте повторно и обратитесь к кассиру.','Smart POS-та операция күйін тексеріңіз. Ақша есептен шықса — қайта төлемеңіз және кассирге хабарласыңыз.',"Check the Smart POS operation. If money was charged, do not pay again; ask the cashier."),
       '',
       true
     );
@@ -1765,8 +1920,8 @@ async function pollKaspiPayment(processId,amount,startedAt){
     var detail=kaspiStatusLabel(data.subStatus);
     if(status==='wait'){
       renderKaspiTestState(
-        t('Ожидаю Smart POS','Smart POS күтілуде',"Waiting for Smart POS"),
-        t('Отмените тестовую оплату на самом терминале.','Тест төлемін терминалдың өзінен тоқтатыңыз.',"Cancel the test payment on the terminal."),
+        t('Ожидаем оплату','Төлем күтілуде',"Waiting for payment"),
+        t('Следуйте подсказкам на Smart POS.','Smart POS нұсқауларын орындаңыз.',"Follow the instructions on Smart POS."),
         money(amount)+' · '+detail,
         false
       );
@@ -1774,35 +1929,31 @@ async function pollKaspiPayment(processId,amount,startedAt){
       return;
     }
     if(status==='success'){
-      renderKaspiTestState(
-        t('Оплата прошла','Төлем өтті',"Payment completed"),
-        t('Это тест: заказ в iiko и Webkassa НЕ отправлен. Если вы случайно оплатили, выполните возврат на Smart POS.','Бұл тест: тапсырыс iiko және Webkassa-ға ЖІБЕРІЛГЕН ЖОҚ. Егер кездейсоқ төлесеңіз, Smart POS-та қайтарым жасаңыз.',"This is a test: nothing was sent to iiko or Webkassa. If you paid accidentally, refund it on Smart POS."),
-        money(amount)+' · '+detail,
-        true
-      );
+      await submitPaidOrder(processId,amount,data.subStatus);
       return;
     }
     renderKaspiTestState(
-      data.subStatus==='ProcessCancelled'?t('Тест успешно отменён','Тест сәтті тоқтатылды',"Test cancelled successfully"):t('Операция завершена без оплаты','Операция төлемсіз аяқталды',"Operation ended without payment"),
-      t('Деньги не должны быть списаны. Заказ в iiko и Webkassa не отправлялся.','Ақша есептен шығарылмауы тиіс. Тапсырыс iiko және Webkassa-ға жіберілген жоқ.',"No money should have been charged. Nothing was sent to iiko or Webkassa."),
+      data.subStatus==='ProcessCancelled'?t('Оплата отменена','Төлем тоқтатылды',"Payment cancelled"):t('Оплата не завершена','Төлем аяқталмады',"Payment not completed"),
+      t('Деньги не должны быть списаны. Можно вернуться в корзину и попробовать снова.','Ақша есептен шықпауы тиіс. Себетке оралып, қайта көріңіз.',"No money should have been charged. Return to the cart and try again."),
       detail+(data.message?' · '+data.message:''),
       true
     );
   }catch(error){
     renderKaspiTestState(
-      t('Не удалось получить статус Smart POS','Smart POS күйін алу мүмкін болмады',"Could not get Smart POS status"),
-      t('Заказ в iiko и Webkassa не отправлялся.','Тапсырыс iiko және Webkassa-ға жіберілген жоқ.',"Nothing was sent to iiko or Webkassa."),
+      t('Не удалось получить статус оплаты','Төлем күйін алу мүмкін болмады',"Could not get payment status"),
+      t('Проверьте Smart POS. Если деньги списались — не оплачивайте повторно и обратитесь к кассиру.','Smart POS-ты тексеріңіз. Ақша есептен шықса — қайта төлемеңіз және кассирге хабарласыңыз.',"Check Smart POS. If money was charged, do not pay again; ask the cashier."),
       error&&error.message?error.message:String(error),
       true
     );
   }
 }
-function showSuccess(){
-  if(!ordersAvailable()){closeModal();refreshAvailabilityNotice();return;}
-  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal center"><div class="success">✓</div><h2>'+t('Демонстрация завершена','Көрсетілім аяқталды',"Demo complete")+'</h2><p class="lead">'+t('Оплата не проводилась. Заказ в iiko не отправлен.','Төлем жасалмады. Тапсырыс iiko-ға жіберілген жоқ.',"No payment was taken. No order was sent to iiko.")+'</p><button class="primary" id="finish" style="width:100%">'+t('Готово','Дайын',"Done")+'</button></div></div>';
+
+function showDemoSuccess(){
+  document.getElementById('modalRoot').innerHTML='<div class="overlay"><div class="modal center"><div class="success">✓</div><h2>'+t('Демонстрация завершена','Көрсетілім аяқталды',"Demo complete")+'</h2><p class="lead">'+t('Оплата не проводилась.','Төлем жасалмады.',"No payment was taken.")+'</p><button class="primary" id="finish" style="width:100%">'+t('Готово','Дайын',"Done")+'</button></div></div>';
   enableBackdropClose();
-  document.getElementById('finish').onclick=function(){cart=[];customerPhone='';resetCrmDiscount();closeModal();updateCart();refreshCardActions();returnToWelcome()};
+  document.getElementById('finish').onclick=function(){closeModal();openCart()};
 }
+
 function handlePushQuery(){
   try{
     var url=new URL(window.location.href);

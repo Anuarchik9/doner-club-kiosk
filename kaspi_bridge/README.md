@@ -1,55 +1,53 @@
-# Doner Club Kaspi Bridge — home test
+# Doner Club Republic Kiosk Bridge
 
-This folder is a **test-only** local bridge for Kaspi Smart POS. Payment methods are intentionally not implemented yet.
+The bridge connects the Republic kiosk to **Kaspi Smart POS** on the local network and serves the current Doner Club kiosk UI to the iPad.
 
-## What it tests
+## On-site network
 
-1. The Windows PC can reach Smart POS on TCP port 8080.
-2. The cash register can be registered with Smart POS via `GET /v2/register`.
-3. The Smart POS grants and returns access/refresh tokens.
-4. The token can access `GET /v2/deviceinfo`.
-5. The refresh token can be renewed via `GET /v2/revoke`.
+The following devices must be on the same Republic LAN/Wi-Fi:
 
-Tokens are stored locally in:
+- Windows PC running this bridge
+- Kaspi Smart POS
+- kiosk iPad
 
-`%LOCALAPPDATA%\DonerClubKaspiBridge\tokens.json`
+Smart POS is reached locally on port **8080**. The bridge listens on port **8765**.
 
-Do not upload that token file to GitHub or send it in chat.
+## First launch at Republic
 
-## Before running at home
+1. Connect the PC and Smart POS to the Republic network.
+2. On Smart POS, check its current local IP.
+3. Put that IP in `.env` as `SMART_POS_HOST`.
+4. Run `install_and_run.bat`.
+5. If Windows Firewall asks, allow Python for **Private networks**.
+6. On the PC open `http://127.0.0.1:8765`.
+7. Press **Проверить порт 8080** and **Проверить Smart POS**.
+8. Register the cash register only if the saved token is missing/invalid.
+9. The bridge page shows the PC local IP. On the iPad open:
+   `http://<PC-IP>:8765/respublica`
 
-The Smart POS and Windows PC **must be connected to the same private local network**.
+Keep the bridge window open while the kiosk is operating.
 
-After moving Smart POS from Republic to the home network, open **О терминале → Информация** and check **IP терминала** again. It may no longer be `192.168.1.8`.
+## What the iPad route does
 
-If the IP changed, edit `.env` and set:
+The local `/respublica` route loads the current kiosk from `kiosk.donerclub.kz`, but payment calls stay on the Republic PC. This avoids the iPad trying to reach `127.0.0.1` and keeps Smart POS inside the local network.
 
-`SMART_POS_HOST=<new IP>`
+Flow after activation:
 
-## Run
+**Kiosk → Smart POS → successful payment → iiko Republic → existing iiko fiscalization/KDS**
 
-Double-click:
+The same Kaspi `processId` is used to create a deterministic iiko order ID. Retrying order submission after a successful payment does not create a second paid order.
 
-`install_and_run.bat`
+## Before opening to guests
 
-Then open:
+Do one controlled end-to-end transaction and confirm:
 
-`http://127.0.0.1:8765`
+- amount appears correctly on Smart POS;
+- payment succeeds once;
+- order appears in iiko Republic;
+- iiko order total equals the paid amount;
+- order closes with payment type **Kiosk**;
+- fiscal receipt is produced by the existing iiko/KKM setup;
+- kitchen/KDS receives the order;
+- stop-list blocks unavailable items.
 
-Use the buttons in order:
-
-1. **Проверить порт 8080**
-2. **Зарегистрировать кассу**
-3. On Smart POS, approve the API access request
-4. **Проверить Smart POS**
-
-A successful device check should return Smart POS device data.
-
-## Important
-
-- The official Kaspi Smart POS API uses HTTPS on port 8080.
-- Registration does not require an access token.
-- After registration, `accessToken` is sent in the HTTP header `accesstoken`.
-- Kaspi's access token expires and is renewed using the refresh token.
-- The test bridge binds to `127.0.0.1`, so it is not exposed to the LAN or internet.
-- There is deliberately **no payment endpoint** in this build. Real payment will be added only after connectivity and registration are confirmed.
+Live payment activation is intentionally controlled by the server flag `KIOSK_LIVE_PAYMENTS_ENABLED`. Keep it disabled until the on-site checks above are ready.

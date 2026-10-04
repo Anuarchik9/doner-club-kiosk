@@ -6,7 +6,7 @@ from datetime import datetime
 
 import requests
 import urllib3
-from flask import Flask, jsonify, request, render_template_string
+from flask import Flask, Response, jsonify, request, render_template_string
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,9 +14,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 SMART_POS_HOST = os.getenv("SMART_POS_HOST", "192.168.1.8").strip()
 SMART_POS_PORT = int(os.getenv("SMART_POS_PORT", "8080"))
-CASH_REGISTER_NAME = os.getenv("CASH_REGISTER_NAME", "DonerClubHomeTest").strip()
-BRIDGE_HOST = os.getenv("BRIDGE_HOST", "127.0.0.1").strip()
+CASH_REGISTER_NAME = os.getenv("CASH_REGISTER_NAME", "DonerClubRepublic").strip()
+BRIDGE_HOST = os.getenv("BRIDGE_HOST", "0.0.0.0").strip()
 BRIDGE_PORT = int(os.getenv("BRIDGE_PORT", "8765"))
+CLOUD_KIOSK_ORIGIN = os.getenv("CLOUD_KIOSK_ORIGIN", "https://kiosk.donerclub.kz").strip().rstrip("/")
+KIOSK_BRIDGE_ORDER_TOKEN = os.getenv("KIOSK_BRIDGE_ORDER_TOKEN", "").strip()
 BRIDGE_ALLOWED_ORIGINS = {
     origin.strip()
     for origin in os.getenv(
@@ -37,7 +39,7 @@ BASE_URL = f"https://{SMART_POS_HOST}:{SMART_POS_PORT}"
 HTTP = requests.Session()
 HTTP.verify = False
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=None)
 
 @app.after_request
 def add_bridge_cors_headers(response):
@@ -75,7 +77,7 @@ pre{white-space:pre-wrap;background:#111;color:#eee;padding:14px;border-radius:1
 <body>
 <div class="wrap"><div class="card">
 <h1>Doner Club · Kaspi Bridge</h1>
-<div class="muted">Тестовый режим. Платежные методы намеренно отсутствуют.</div>
+<div class="muted">Локальный мост киоска Республики: Smart POS + облачный Kiosk + iiko.</div>
 <p><b>Smart POS:</b> {{host}}:{{port}}<br><b>Имя кассы:</b> {{name}}<br><b>Локальный ПК:</b> {{local_ip}}</p>
 <div class="row">
 <button class="secondary" onclick="callApi('/api/ping','GET')">1. Проверить порт 8080</button>
@@ -84,7 +86,7 @@ pre{white-space:pre-wrap;background:#111;color:#eee;padding:14px;border-radius:1
 <button class="secondary" onclick="callApi('/api/refresh','POST')">Обновить токен</button>
 </div>
 <div id="hint" class="muted">Для регистрации нажмите кнопку 2 и подтвердите запрос на экране Smart POS.</div>
-<pre id="out">Готово к тесту.</pre>
+<pre id="out">Готово к проверке оборудования.</pre>
 </div></div>
 <script>
 async function callApi(url,method){
@@ -148,6 +150,77 @@ def local_ip():
     except Exception:
         return "не определён"
 
+
+def proxy_cloud_kiosk(path=None):
+    target_path = path or request.path
+    url = CLOUD_KIOSK_ORIGIN + target_path
+    if request.query_string:
+        url += "?" + request.query_string.decode("utf-8", errors="ignore")
+
+    headers = {
+        "Accept": request.headers.get("Accept", "*/*"),
+        "User-Agent": "DonerClubRepublicBridge/1.0",
+    }
+    content_type = request.headers.get("Content-Type")
+    if content_type:
+        headers["Content-Type"] = content_type
+    if target_path == "/kiosk-paid-order" and KIOSK_BRIDGE_ORDER_TOKEN:
+        headers["X-Kiosk-Bridge-Token"] = KIOSK_BRIDGE_ORDER_TOKEN
+
+    try:
+        upstream = requests.request(
+            request.method,
+            url,
+            headers=headers,
+            data=request.get_data() if request.method in {"POST", "PUT", "PATCH"} else None,
+            timeout=(8, 60),
+            allow_redirects=False,
+        )
+    except requests.RequestException as error:
+        return jsonify({
+            "success": False,
+            "code": "CLOUD_KIOSK_UNAVAILABLE",
+            "message": "Не удалось связаться с сервером Doner Club.",
+            "details": str(error),
+        }), 502
+
+    response_headers = {}
+    for header in ("Content-Type", "Cache-Control", "ETag", "Last-Modified", "Location"):
+        value = upstream.headers.get(header)
+        if value:
+            response_headers[header] = value
+    return Response(upstream.content, status=upstream.status_code, headers=response_headers)
+
+
+@app.get("/kiosk")
+@app.get("/respublica")
+@app.get("/Respublica")
+def republic_kiosk():
+    return proxy_cloud_kiosk("/respublica")
+
+
+@app.get("/aray")
+@app.get("/Aray")
+def arai_kiosk():
+    return proxy_cloud_kiosk("/aray")
+
+
+@app.route("/static/<path:asset_path>", methods=["GET"])
+def kiosk_static(asset_path):
+    return proxy_cloud_kiosk("/static/" + asset_path)
+
+
+@app.route("/kiosk-menu", methods=["GET"])
+@app.route("/kiosk-stop-list", methods=["GET"])
+@app.route("/kiosk-crm-register", methods=["POST"])
+@app.route("/kiosk-crm-customer", methods=["GET"])
+@app.route("/kiosk-paid-order", methods=["POST"])
+@app.route("/kiosk-payment-readiness", methods=["GET"])
+@app.route("/kiosk-iiko-config", methods=["GET"])
+def kiosk_cloud_api_proxy():
+    return proxy_cloud_kiosk(request.path)
+
+
 @app.get("/")
 def index():
     return render_template_string(
@@ -163,8 +236,10 @@ def health():
     tokens = load_tokens()
     return jsonify({
         "ok": True,
-        "mode": "test-only",
-        "paymentsEnabled": False,
+        "mode": "republic-kiosk",
+        "paymentsEnabled": True,
+        "cloudKiosk": CLOUD_KIOSK_ORIGIN,
+        "localKioskUrl": f"http://{local_ip()}:{BRIDGE_PORT}/respublica",
         "smartPos": f"{SMART_POS_HOST}:{SMART_POS_PORT}",
         "cashRegisterName": CASH_REGISTER_NAME,
         "tokenStored": bool(tokens.get("accessToken")),
@@ -293,7 +368,7 @@ def payment_start():
     if amount <= 0:
         return jsonify({"ok": False, "message": "Сумма должна быть больше 0 ₸."}), 400
     if amount > 500000:
-        return jsonify({"ok": False, "message": "Тестовый лимит Bridge: 500 000 ₸."}), 400
+        return jsonify({"ok": False, "message": "Лимит одной операции: 500 000 ₸."}), 400
 
     try:
         payload, terminal_id = smart_device_info(access_token)
@@ -316,7 +391,7 @@ def payment_start():
                 "processId": process_id,
                 "status": data.get("status"),
                 "terminalId": terminal_id,
-                "message": "Оплата запущена на Smart POS. Заказ в iiko/Webkassa не отправляется.",
+                "message": "Оплата запущена на Smart POS.",
             })
         return jsonify({
             "ok": False,
@@ -365,10 +440,11 @@ def payment_status():
 
 if __name__ == "__main__":
     print("=" * 64)
-    print("Doner Club Kaspi Bridge — TEST ONLY")
+    print("Doner Club Republic Kiosk Bridge")
     print(f"Smart POS: {BASE_URL}")
     print(f"Cash register name: {CASH_REGISTER_NAME}")
-    print(f"Open: http://{BRIDGE_HOST}:{BRIDGE_PORT}")
-    print("Payments are NOT implemented in this test build.")
+    print(f"Setup on this PC: http://127.0.0.1:{BRIDGE_PORT}")
+    print(f"Kiosk on iPad: http://{local_ip()}:{BRIDGE_PORT}/respublica")
+    print("Keep this window open while the kiosk is operating.")
     print("=" * 64)
     app.run(host=BRIDGE_HOST, port=BRIDGE_PORT, debug=False)

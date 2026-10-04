@@ -4,6 +4,7 @@ import math
 import os
 import threading
 import time
+import uuid
 
 import requests
 from flask import Flask, jsonify, request
@@ -654,6 +655,16 @@ def _normalize_order_items(incoming_items):
             "amount": amount,
         }
 
+        item_price = source_item.get("price")
+        if item_price is not None:
+            try:
+                item_price = float(item_price)
+            except (TypeError, ValueError, OverflowError):
+                raise ValueError("Item price must be a finite non-negative number") from None
+            if isinstance(source_item.get("price"), bool) or not math.isfinite(item_price) or item_price < 0:
+                raise ValueError("Item price must be a finite non-negative number")
+            order_item["price"] = item_price
+
         product_size_id = source_item.get("productSizeId")
         if product_size_id:
             order_item["productSizeId"] = str(product_size_id)
@@ -679,6 +690,16 @@ def _normalize_order_items(incoming_items):
                 "productId": modifier_product_id,
                 "amount": modifier_amount,
             }
+            modifier_price = modifier.get("price")
+            if modifier_price is not None:
+                try:
+                    modifier_price = float(modifier_price)
+                except (TypeError, ValueError, OverflowError):
+                    raise ValueError("Modifier price must be a finite non-negative number") from None
+                if isinstance(modifier.get("price"), bool) or not math.isfinite(modifier_price) or modifier_price < 0:
+                    raise ValueError("Modifier price must be a finite non-negative number")
+                modifier_payload["price"] = modifier_price
+
             product_group_id = modifier.get("productGroupId")
             if product_group_id:
                 modifier_payload["productGroupId"] = str(product_group_id)
@@ -735,6 +756,143 @@ def _validate_point_terminal_table(point, terminal_group_id, table_id):
         "department": department,
         "organizationId": organization_id,
     }, None, 200
+
+
+
+def _kiosk_point_env_prefix(point):
+    normalized = str(point or "").strip().upper()
+    if normalized in {"RESPUBLIKA", "RESPUBLICA", "REPUBLIC", "REPUBLICA", "РЕСПУБЛИКА"}:
+        return "RESPUBLIKA"
+    return "ARAI"
+
+
+def _resolve_kiosk_order_target(point):
+    department, available_departments = find_department(point)
+    if not department:
+        return None, {
+            "success": False,
+            "code": "POINT_NOT_FOUND",
+            "message": f"Point '{point}' not found",
+            "availablePoints": [
+                {"code": d.get("code"), "name": d.get("name")}
+                for d in available_departments
+            ],
+        }, 404
+
+    organization_id = department["organizationId"]
+    terminal_groups, _ = get_terminal_groups_for_organization(organization_id)
+    if not terminal_groups:
+        return None, {
+            "success": False,
+            "code": "TERMINAL_GROUP_NOT_FOUND",
+            "message": "iiko did not return an available terminal group.",
+        }, 503
+
+    group_ids = [str(group["id"]) for group in terminal_groups]
+    alive = get_terminal_groups_alive(organization_id, group_ids)
+    prefix = _kiosk_point_env_prefix(point)
+    configured_group = str(os.environ.get(f"IIKO_KIOSK_{prefix}_TERMINAL_GROUP_ID") or "").strip()
+
+    if configured_group:
+        selected_group = next((group for group in terminal_groups if str(group["id"]) == configured_group), None)
+        if not selected_group:
+            return None, {
+                "success": False,
+                "code": "CONFIGURED_TERMINAL_GROUP_INVALID",
+                "message": f"Configured kiosk terminal group is not available for {point}.",
+            }, 503
+    else:
+        selected_group = next(
+            (group for group in terminal_groups if alive.get(str(group["id"])) is True),
+            terminal_groups[0],
+        )
+
+    terminal_group_id = str(selected_group["id"])
+    sections, _ = get_restaurant_sections_for_terminal_groups([terminal_group_id])
+    tables = [
+        table
+        for section in sections
+        for table in (section.get("tables") or [])
+        if table.get("id")
+    ]
+    if not tables:
+        return None, {
+            "success": False,
+            "code": "KIOSK_TABLE_NOT_FOUND",
+            "message": "iiko did not return a table for the kiosk terminal group.",
+        }, 503
+
+    configured_table = str(os.environ.get(f"IIKO_KIOSK_{prefix}_TABLE_ID") or "").strip()
+    if configured_table:
+        selected_table = next((table for table in tables if str(table["id"]) == configured_table), None)
+        if not selected_table:
+            return None, {
+                "success": False,
+                "code": "CONFIGURED_KIOSK_TABLE_INVALID",
+                "message": f"Configured kiosk table is not available for {point}.",
+            }, 503
+    else:
+        selected_table = tables[0]
+
+    return {
+        "department": department,
+        "organizationId": organization_id,
+        "terminalGroupId": terminal_group_id,
+        "terminalGroupName": selected_group.get("name"),
+        "terminalGroupAlive": alive.get(terminal_group_id),
+        "tableId": str(selected_table["id"]),
+        "tableName": selected_table.get("name") or selected_table.get("number"),
+        "sectionName": selected_table.get("sectionName"),
+    }, None, 200
+
+
+def _table_order_by_id(organization_id, order_id):
+    response = iiko_kiosk_post(
+        "/api/1/order/by_id",
+        {"organizationIds": [organization_id], "orderIds": [order_id]},
+        timeout=30,
+    )
+    if not response.ok:
+        return None
+    payload = response.json()
+    orders = payload.get("orders") or []
+    return orders[0] if orders else None
+
+
+def _close_kiosk_order(organization_id, order_id):
+    response = iiko_kiosk_post(
+        "/api/1/order/close",
+        {"organizationId": organization_id, "orderId": order_id},
+        timeout=45,
+    )
+    if not response.ok:
+        return None, {
+            "success": False,
+            "code": "IIKO_ORDER_CLOSE_FAILED",
+            "statusCode": response.status_code,
+            "details": response.text[:3000],
+            "orderId": order_id,
+        }, 502
+
+    result = response.json()
+    status = _wait_command(organization_id, result.get("correlationId"), attempts=12)
+    if status and status.get("state") == "Success":
+        return status, None, 200
+    if status and status.get("state") == "Error":
+        return status, {
+            "success": False,
+            "code": "IIKO_ORDER_CLOSE_COMMAND_ERROR",
+            "message": "iikoFront reported an error while closing the paid kiosk order.",
+            "commandStatus": status,
+            "orderId": order_id,
+        }, 502
+    return status, {
+        "success": False,
+        "code": "IIKO_ORDER_CLOSE_PENDING",
+        "message": "Order closure is not confirmed yet. Do not charge the guest again.",
+        "commandStatus": status,
+        "orderId": order_id,
+    }, 202
 
 
 def _wait_command(organization_id, correlation_id, attempts=10):
@@ -1113,6 +1271,371 @@ def kiosk_test_order():
         return jsonify({"success": False, "code": "IIKO_TIMEOUT", "message": "iiko did not answer in time."}), 504
     except Exception as error:
         return jsonify({"success": False, "code": "KIOSK_TEST_ORDER_ERROR", "message": str(error)}), 500
+
+
+
+
+def _live_kiosk_payments_enabled():
+    return str(os.environ.get("KIOSK_LIVE_PAYMENTS_ENABLED") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+@app.get("/kiosk-payment-readiness")
+def kiosk_payment_readiness():
+    return jsonify(
+        success=True,
+        ready=_live_kiosk_payments_enabled(),
+        point="RESPUBLIKA",
+        iikoConfigured=bool(os.environ.get("IIKO_KIOSK_API_KEY")),
+        bridgeTokenRequired=bool(str(os.environ.get("KIOSK_BRIDGE_ORDER_TOKEN") or "").strip()),
+    )
+
+
+def _record_kiosk_order_in_crm(data, *, order_id, order_number, payment_sum):
+    if not CRM_BASE_URL or not CRM_API_KEY:
+        return {"ok": False, "skipped": True, "reason": "CRM_NOT_CONFIGURED"}
+
+    phone = str(data.get("phone") or "").strip() or None
+    try:
+        subtotal = float(data.get("subtotal") if data.get("subtotal") is not None else payment_sum)
+        discount_amount = float(data.get("discountAmount") or 0)
+        discount_percent = float(data.get("discountPercent") or 0)
+    except (TypeError, ValueError, OverflowError):
+        return {"ok": False, "reason": "INVALID_CRM_TOTALS"}
+
+    if any(not math.isfinite(value) for value in (subtotal, discount_amount, discount_percent)):
+        return {"ok": False, "reason": "INVALID_CRM_TOTALS"}
+    if abs((subtotal - discount_amount) - float(payment_sum)) > 0.011:
+        return {"ok": False, "reason": "CRM_TOTAL_MISMATCH"}
+    if discount_amount > 0 and not phone:
+        return {"ok": False, "reason": "DISCOUNT_WITHOUT_PHONE"}
+
+    point_code = _kiosk_point_env_prefix(data.get("point"))
+    payload = {
+        "orderNumber": str(order_number or ""),
+        "iikoOrderId": str(order_id),
+        "locationCode": point_code,
+        "source": "KIOSK",
+        "subtotal": round(subtotal, 2),
+        "discountAmount": round(discount_amount, 2),
+        "discountPercent": round(discount_percent, 2),
+        "total": round(float(payment_sum), 2),
+        "paymentMethod": "KASPI_SMART_POS",
+        "status": "COMPLETED",
+        "phone": phone or "",
+        "discountReason": "Скидка 5% на первый заказ в киоске" if discount_amount > 0 else "",
+    }
+    if discount_amount > 0:
+        payload["campaignCode"] = "FIRST_KIOSK_5"
+
+    try:
+        response = requests.post(
+            f"{CRM_BASE_URL}/api/v1/orders",
+            json=payload,
+            headers={"X-API-Key": CRM_API_KEY, "Content-Type": "application/json"},
+            timeout=(5, 20),
+        )
+        try:
+            body = response.json()
+        except ValueError:
+            body = {"raw": response.text[:500]}
+        if response.ok and isinstance(body, dict) and body.get("ok"):
+            return {"ok": True, "response": body}
+        return {"ok": False, "statusCode": response.status_code, "response": body}
+    except requests.RequestException as error:
+        return {"ok": False, "reason": "CRM_UNAVAILABLE", "message": str(error)}
+
+
+@app.route("/kiosk-paid-order", methods=["POST"])
+def kiosk_paid_order():
+    if not _live_kiosk_payments_enabled():
+        return jsonify(
+            success=False,
+            code="LIVE_PAYMENTS_NOT_ENABLED",
+            message="Republic kiosk live payments are prepared but not activated yet.",
+        ), 503
+
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(success=False, code="INVALID_KIOSK_ORDER", message="JSON object required."), 400
+
+    # Optional bridge authentication. Once KIOSK_BRIDGE_ORDER_TOKEN is configured
+    # on Render, the local Republic bridge must forward this header.
+    expected_bridge_token = str(os.environ.get("KIOSK_BRIDGE_ORDER_TOKEN") or "").strip()
+    if expected_bridge_token:
+        supplied_bridge_token = str(request.headers.get("X-Kiosk-Bridge-Token") or "").strip()
+        if not supplied_bridge_token or not hmac.compare_digest(expected_bridge_token, supplied_bridge_token):
+            return jsonify(success=False, code="BRIDGE_UNAUTHORIZED"), 401
+
+    point = str(data.get("point") or "RESPUBLIKA").strip()
+    process_id = str(data.get("paymentProcessId") or "").strip()
+    payment_status = str(data.get("paymentSubStatus") or "").strip()
+    phone = str(data.get("phone") or "").strip() or None
+    incoming_items = data.get("items") or []
+
+    if not process_id:
+        return jsonify(success=False, code="PAYMENT_PROCESS_ID_REQUIRED", message="Kaspi payment process ID is required."), 400
+    if payment_status not in {"QrTransactionSuccess", "CardTransactionSuccess"}:
+        return jsonify(success=False, code="PAYMENT_NOT_CONFIRMED", message="Kaspi payment is not confirmed as successful."), 409
+
+    try:
+        payment_sum = float(data.get("paymentSum"))
+    except (TypeError, ValueError, OverflowError):
+        payment_sum = 0
+    if isinstance(data.get("paymentSum"), bool) or not math.isfinite(payment_sum) or payment_sum <= 0 or payment_sum > 500000:
+        return jsonify(success=False, code="INVALID_PAYMENT_SUM", message="Invalid paid amount."), 400
+
+    try:
+        subtotal = float(data.get("subtotal") if data.get("subtotal") is not None else payment_sum)
+        discount_amount = float(data.get("discountAmount") or 0)
+        discount_percent = float(data.get("discountPercent") or 0)
+    except (TypeError, ValueError, OverflowError):
+        return jsonify(success=False, code="INVALID_ORDER_TOTALS", message="Invalid order totals."), 400
+    if any(not math.isfinite(value) for value in (subtotal, discount_amount, discount_percent)):
+        return jsonify(success=False, code="INVALID_ORDER_TOTALS", message="Invalid order totals."), 400
+    if subtotal < 0 or discount_amount < 0 or discount_percent < 0 or discount_percent > 100:
+        return jsonify(success=False, code="INVALID_ORDER_TOTALS", message="Invalid order totals."), 400
+    if abs((subtotal - discount_amount) - payment_sum) > 0.011:
+        return jsonify(success=False, code="ORDER_PAYMENT_SUM_MISMATCH", message="Paid amount does not match order total."), 409
+    if discount_amount > 0 and not phone:
+        return jsonify(success=False, code="DISCOUNT_PHONE_REQUIRED", message="Phone is required for the welcome discount."), 400
+
+    try:
+        order_items = _normalize_order_items(incoming_items)
+    except ValueError as error:
+        return jsonify(success=False, code="INVALID_KIOSK_ORDER", message=str(error)), 400
+
+    try:
+        if not os.environ.get("IIKO_KIOSK_API_KEY"):
+            return jsonify(success=False, code="KIOSK_API_NOT_CONFIGURED", message="IIKO_KIOSK_API_KEY is not configured."), 503
+
+        target, error_payload, status_code = _resolve_kiosk_order_target(point)
+        if error_payload:
+            return jsonify(error_payload), status_code
+
+        rejection = check_order_availability(target, order_items)
+        if rejection:
+            return jsonify(rejection), 409
+
+        organization_id = target["organizationId"]
+        terminal_group_id = target["terminalGroupId"]
+        table_id = target["tableId"]
+        order_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"donerclub:kiosk:{point}:{process_id}"))
+        external_number = ("KIOSK-" + process_id)[-50:]
+        payment_type_id = os.environ.get(
+            "IIKO_KIOSK_PAYMENT_TYPE_ID",
+            "d89a8bf4-b3d1-4625-8de3-6b0ef162e0c3",
+        )
+
+        existing = _table_order_by_id(organization_id, order_id)
+        if existing and existing.get("creationStatus") == "Success":
+            existing_order = existing.get("order") or {}
+            existing_sum = float(existing_order.get("sum") or 0)
+            if abs(existing_sum - payment_sum) > 0.011:
+                return jsonify(
+                    success=False,
+                    code="EXISTING_ORDER_SUM_MISMATCH",
+                    message="Paid kiosk order already exists in iiko with a different sum. Do not charge again.",
+                    orderId=order_id,
+                    iiko=existing,
+                ), 409
+            if str(existing_order.get("status") or "") == "Closed":
+                crm_result = _record_kiosk_order_in_crm(
+                    data,
+                    order_id=order_id,
+                    order_number=existing_order.get("number"),
+                    payment_sum=payment_sum,
+                )
+                return jsonify(
+                    success=True,
+                    duplicate=True,
+                    message="Paid kiosk order was already completed.",
+                    orderId=order_id,
+                    order=existing_order,
+                    target=target,
+                    crmRecorded=bool(crm_result.get("ok")),
+                )
+            close_status, close_error, close_code = _close_kiosk_order(organization_id, order_id)
+            if close_error:
+                return jsonify(close_error), close_code
+            crm_result = _record_kiosk_order_in_crm(
+                data,
+                order_id=order_id,
+                order_number=existing_order.get("number"),
+                payment_sum=payment_sum,
+            )
+            return jsonify(
+                success=True,
+                duplicate=True,
+                message="Existing paid kiosk order was closed.",
+                orderId=order_id,
+                order=existing_order,
+                close={"commandStatus": close_status},
+                target=target,
+                crmRecorded=bool(crm_result.get("ok")),
+            )
+
+        order_payload = {
+            "id": order_id,
+            "externalNumber": external_number,
+            "tableIds": [table_id],
+            "items": order_items,
+            "guests": {"count": 1, "splitBetweenPersons": False},
+            "payments": [{
+                "paymentTypeKind": "Card",
+                "sum": payment_sum,
+                "paymentTypeId": payment_type_id,
+                "isProcessedExternally": True,
+                "isFiscalizedExternally": False,
+                "isPrepay": False,
+            }],
+            "comment": f"KIOSK · KASPI SMART POS · {process_id}",
+        }
+        if phone:
+            order_payload["phone"] = phone
+
+        payload = {
+            "organizationId": organization_id,
+            "terminalGroupId": terminal_group_id,
+            "createOrderSettings": {
+                "servicePrint": True,
+                "transportToFrontTimeout": 10,
+                "checkStopList": True,
+            },
+            "order": order_payload,
+        }
+
+        response = iiko_kiosk_post("/api/1/order/create", payload, timeout=45)
+        if not response.ok:
+            # A repeated deterministic order ID can surface as a create error.
+            # Re-read it before telling the kiosk to retry.
+            existing = _table_order_by_id(organization_id, order_id)
+            if existing and existing.get("creationStatus") == "Success":
+                existing_order = existing.get("order") or {}
+                if abs(float(existing_order.get("sum") or 0) - payment_sum) <= 0.011:
+                    close_status, close_error, close_code = _close_kiosk_order(organization_id, order_id)
+                    if close_error:
+                        return jsonify(close_error), close_code
+                    crm_result = _record_kiosk_order_in_crm(
+                        data,
+                        order_id=order_id,
+                        order_number=existing_order.get("number"),
+                        payment_sum=payment_sum,
+                    )
+                    return jsonify(
+                        success=True,
+                        duplicate=True,
+                        message="Paid kiosk order already existed and was closed.",
+                        orderId=order_id,
+                        order=existing_order,
+                        close={"commandStatus": close_status},
+                        target=target,
+                        crmRecorded=bool(crm_result.get("ok")),
+                    )
+            return jsonify(
+                success=False,
+                code="IIKO_PAID_ORDER_CREATE_FAILED",
+                statusCode=response.status_code,
+                details=response.text[:3000],
+                orderId=order_id,
+            ), 502
+
+        result = response.json()
+        command_status = _wait_command(organization_id, result.get("correlationId"), attempts=10)
+        order_info = result.get("orderInfo") or {}
+        if command_status and command_status.get("state") == "Error":
+            return jsonify(
+                success=False,
+                code="IIKO_PAID_ORDER_CREATE_COMMAND_ERROR",
+                message="iikoFront reported an error while creating the paid kiosk order.",
+                orderId=order_id,
+                iiko=result,
+                commandStatus=command_status,
+            ), 502
+        if not command_status or command_status.get("state") != "Success":
+            return jsonify(
+                success=False,
+                code="IIKO_PAID_ORDER_CREATE_PENDING",
+                message="Creation is not confirmed yet. Do not charge the guest again.",
+                orderId=order_id,
+                iiko=result,
+                commandStatus=command_status,
+            ), 202
+
+        confirmed = _table_order_by_id(organization_id, order_id) or order_info
+        confirmed_order = confirmed.get("order") if isinstance(confirmed, dict) else {}
+        if not isinstance(confirmed_order, dict):
+            confirmed_order = {}
+        iiko_sum = float(confirmed_order.get("sum") or 0)
+        if abs(iiko_sum - payment_sum) > 0.011:
+            return jsonify(
+                success=False,
+                code="IIKO_SUM_MISMATCH",
+                message="Payment succeeded, but the iiko order total differs. Do not charge again; cashier intervention is required.",
+                paymentSum=payment_sum,
+                iikoSum=iiko_sum,
+                orderId=order_id,
+                iiko=confirmed,
+            ), 409
+
+        close_status, close_error, close_code = _close_kiosk_order(organization_id, order_id)
+        if close_error:
+            return jsonify(close_error), close_code
+
+        final_order = _table_order_by_id(organization_id, order_id)
+        final_order_body = (final_order or {}).get("order") if isinstance(final_order, dict) else confirmed_order
+        if not isinstance(final_order_body, dict):
+            final_order_body = confirmed_order
+        crm_result = _record_kiosk_order_in_crm(
+            data,
+            order_id=order_id,
+            order_number=final_order_body.get("number"),
+            payment_sum=payment_sum,
+        )
+        if not crm_result.get("ok"):
+            print(
+                "KIOSK_CRM_ORDER_WARNING " + json.dumps({
+                    "orderId": order_id,
+                    "reason": crm_result.get("reason"),
+                    "statusCode": crm_result.get("statusCode"),
+                }, ensure_ascii=False),
+                flush=True,
+            )
+        return jsonify(
+            success=True,
+            message="Paid kiosk order was created and closed in iiko.",
+            orderId=order_id,
+            externalNumber=external_number,
+            payment={
+                "paymentTypeId": payment_type_id,
+                "paymentTypeKind": "Card",
+                "sum": payment_sum,
+                "isProcessedExternally": True,
+                "isFiscalizedExternally": False,
+            },
+            servicePrintRequested=True,
+            commandStatus=command_status,
+            close={"commandStatus": close_status},
+            order=final_order_body,
+            target=target,
+            crmRecorded=bool(crm_result.get("ok")),
+        )
+
+    except AvailabilityUnavailable:
+        raise
+    except ConfigurationError as error:
+        return jsonify(success=False, code="KIOSK_API_NOT_CONFIGURED", message=str(error)), 503
+    except requests.Timeout:
+        return jsonify(success=False, code="IIKO_TIMEOUT", message="iiko did not answer in time. Do not charge again."), 504
+    except requests.HTTPError as error:
+        response = error.response
+        return jsonify(
+            success=False,
+            code="IIKO_HTTP_ERROR",
+            statusCode=response.status_code if response is not None else None,
+            details=response.text[:3000] if response is not None else str(error),
+        ), 502
+    except Exception as error:
+        return jsonify(success=False, code="KIOSK_PAID_ORDER_ERROR", message=str(error)), 500
 
 
 @app.route("/kiosk-test-paid-order", methods=["POST"])

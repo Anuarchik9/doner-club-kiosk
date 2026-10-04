@@ -24,8 +24,16 @@ echo Installing dependencies...
 if errorlevel 1 goto :fail
 
 echo.
-echo Starting Doner Club Kaspi Bridge...
-echo Open http://127.0.0.1:8765 in your browser.
+echo Starting Doner Club Republic Kiosk Bridge...
+echo.
+echo PC setup page:
+echo   http://127.0.0.1:8765
+echo.
+echo On the iPad use:
+echo   http://IP-OF-THIS-PC:8765/respublica
+echo.
+echo If Windows Firewall asks, allow access on PRIVATE networks.
+echo Keep this window open while the kiosk is operating.
 echo.
 ".venv\Scripts\python.exe" bridge.py
 goto :eof
