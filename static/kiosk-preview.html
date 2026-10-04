@@ -228,7 +228,7 @@ var KIOSK_CONTEXT=kioskContextFromPath();
 var KASPI_BRIDGE_TEST=(new URLSearchParams(window.location.search)).get('kaspiTest')==='1';
 var KASPI_BRIDGE_BASE=(new URLSearchParams(window.location.search)).get('bridge')||'http://127.0.0.1:8765';
 var MENU_CACHE_KEY='donerclub-kiosk-'+KIOSK_CONTEXT.key+'-menu-v3', MENU_CACHE_TTL=10*60*1000;
-var STOP_REFRESH_MS=30*1000;
+var STOP_REFRESH_MS=60*1000;
 var CART_SESSION_KEY='donerclub-kiosk-'+KIOSK_CONTEXT.key+'-cart-v2';
 var navScrollLockUntil=0;
 function pointLabel(){return lang==='en'?(KIOSK_CONTEXT.key==='arai'?'Arai':'Respublica'):lang==='ru'?KIOSK_CONTEXT.displayRu:KIOSK_CONTEXT.displayKz}
