@@ -1681,7 +1681,7 @@ function openPhoneEntry(){
         fetch('/kiosk-crm-register',{
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({phone:customerPhone}),
+          body:JSON.stringify({phone:customerPhone,locationCode:KIOSK_CONTEXT.point}),
           cache:'no-store',
           keepalive:true
         }).catch(function(){});

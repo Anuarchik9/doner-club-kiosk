@@ -1986,12 +1986,13 @@ def kiosk_crm_register():
     response = None
     last_error = None
     retryable_statuses = {429, 502, 503, 504}
+    location_code = _kiosk_point_env_prefix(payload.get("locationCode") or payload.get("point") or "ARAI")
 
     for attempt in range(4):
         try:
             response = requests.post(
                 f"{CRM_BASE_URL}/api/v1/customers/register",
-                json={"phone": phone, "source": "KIOSK", "locationCode": "ARAI"},
+                json={"phone": phone, "source": "KIOSK", "locationCode": location_code},
                 headers={"X-API-Key": CRM_API_KEY, "Content-Type": "application/json"},
                 timeout=(4, 12),
             )
