@@ -1850,6 +1850,141 @@ def kiosk_test_paid_order():
 
 
 
+
+def _call_centre_key_authorized():
+    expected_key = str(os.environ.get("CALL_CENTRE_API_KEY") or "").strip()
+    supplied_key = str(request.headers.get("X-Call-Centre-Key") or "").strip()
+    return bool(expected_key and supplied_key and hmac.compare_digest(expected_key, supplied_key))
+
+
+def _collect_payment_type_rows(value, out):
+    if isinstance(value, dict):
+        if value.get("id") and value.get("name"):
+            kind = value.get("paymentTypeKind") or value.get("kind")
+            out.append({
+                "id": str(value.get("id")),
+                "name": str(value.get("name") or ""),
+                "paymentTypeKind": str(kind or "Card"),
+                "isDeleted": bool(value.get("isDeleted")),
+            })
+        for child in value.values():
+            if isinstance(child, (dict, list)):
+                _collect_payment_type_rows(child, out)
+    elif isinstance(value, list):
+        for child in value:
+            _collect_payment_type_rows(child, out)
+
+
+def _call_centre_payment_types(organization_id):
+    response = iiko_kiosk_post(
+        "/api/1/payment_types",
+        {"organizationIds": [organization_id]},
+        timeout=30,
+    )
+    if not response.ok:
+        return [], {
+            "code": "IIKO_PAYMENT_TYPES_FAILED",
+            "statusCode": response.status_code,
+            "details": response.text[:1000],
+        }
+    rows = []
+    _collect_payment_type_rows(response.json(), rows)
+    unique = {}
+    for row in rows:
+        if row["isDeleted"]:
+            continue
+        unique[row["id"]] = row
+    return list(unique.values()), None
+
+
+def _payment_name_key(value):
+    return re.sub(r"[^a-zа-я0-9]+", " ", str(value or "").casefold()).strip()
+
+
+def _find_internal_payment_type(rows, method):
+    method = str(method or "").strip().upper()
+    aliases = {
+        "DEPOSIT": ("депозит", "deposit"),
+        "FOOD": ("питание", "staff food", "stafffood", "еда персонала", "питание персонала", "стафф"),
+    }
+    candidates = aliases.get(method, ())
+    for row in rows:
+        key = _payment_name_key(row.get("name"))
+        if key in candidates or any(alias in key for alias in candidates):
+            return row
+    return None
+
+
+def _resolve_call_centre_payment(organization_id, method):
+    method = str(method or "REMOTE").strip().upper()
+    if method == "REMOTE":
+        return {
+            "method": "REMOTE",
+            "id": os.environ.get(
+                "IIKO_CALL_CENTRE_PAYMENT_TYPE_ID",
+                os.environ.get(
+                    "IIKO_KIOSK_PAYMENT_TYPE_ID",
+                    "d89a8bf4-b3d1-4625-8de3-6b0ef162e0c3",
+                ),
+            ),
+            "name": "Удалённая оплата",
+            "paymentTypeKind": "Card",
+            "isProcessedExternally": True,
+        }, None
+
+    rows, error = _call_centre_payment_types(organization_id)
+    if error:
+        return None, error
+    row = _find_internal_payment_type(rows, method)
+    if not row:
+        return None, {
+            "code": "PAYMENT_TYPE_NOT_FOUND",
+            "message": f"Тип оплаты {method} не найден в iiko.",
+            "availablePaymentTypes": [x.get("name") for x in rows if x.get("name")][:50],
+        }
+    return {
+        "method": method,
+        "id": row["id"],
+        "name": row["name"],
+        "paymentTypeKind": row.get("paymentTypeKind") or "Card",
+        "isProcessedExternally": True,
+    }, None
+
+
+@app.get("/call-centre-payment-options")
+def call_centre_payment_options():
+    if not _call_centre_key_authorized():
+        return jsonify(success=False, code="CALL_CENTRE_UNAUTHORIZED"), 401
+    point = str(request.args.get("point") or "RESPUBLIKA").strip()
+    try:
+        target, error_payload, status_code = _resolve_kiosk_order_target(point)
+        if error_payload:
+            return jsonify(error_payload), status_code
+        organization_id = target["organizationId"]
+        rows, payment_error = _call_centre_payment_types(organization_id)
+        options = [{
+            "code": "REMOTE",
+            "name": "Удалённая оплата",
+            "available": True,
+        }]
+        for code, label in (("DEPOSIT", "Депозит"), ("FOOD", "Питание")):
+            row = _find_internal_payment_type(rows, code) if not payment_error else None
+            options.append({
+                "code": code,
+                "name": row.get("name") if row else label,
+                "available": bool(row),
+                "paymentTypeId": row.get("id") if row else None,
+            })
+        return jsonify(
+            success=True,
+            point=point,
+            options=options,
+            warning=payment_error,
+        )
+    except Exception as error:
+        return jsonify(success=False, code="CALL_CENTRE_OPTIONS_ERROR", message=str(error)), 500
+
+
 @app.post("/call-centre-order")
 def call_centre_order():
     expected_key = str(os.environ.get("CALL_CENTRE_API_KEY") or "").strip()
