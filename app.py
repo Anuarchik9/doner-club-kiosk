@@ -1984,18 +1984,46 @@ def _find_internal_payment_type(rows, method, terminal_group_id=None):
 def _resolve_call_centre_payment(organization_id, method, terminal_group_id=None):
     method = str(method or "REMOTE").strip().upper()
     if method == "REMOTE":
+        rows, error = _call_centre_payment_types(organization_id)
+        if error:
+            return None, error
+
+        override_id = str(os.environ.get("IIKO_CALL_CENTRE_BASE_PAYMENT_TYPE_ID") or "").strip()
+        row = None
+        if override_id:
+            row = next((item for item in rows if str(item.get("id") or "") == override_id), None)
+            if not row:
+                return None, {
+                    "code": "CALL_CENTRE_BASE_PAYMENT_TYPE_ID_NOT_FOUND",
+                    "message": "IIKO_CALL_CENTRE_BASE_PAYMENT_TYPE_ID не найден среди типов оплаты iiko.",
+                    "availablePaymentTypes": [x.get("name") for x in rows if x.get("name")][:80],
+                }
+        else:
+            wanted = {"call centre base", "call center base"}
+            candidates = []
+            for item in rows:
+                groups = item.get("terminalGroupIds") or []
+                if terminal_group_id and groups and str(terminal_group_id) not in groups:
+                    continue
+                if _payment_name_key(item.get("name")) in wanted:
+                    candidates.append(item)
+            row = candidates[0] if candidates else None
+
+        if not row:
+            return None, {
+                "code": "CALL_CENTRE_BASE_PAYMENT_TYPE_NOT_FOUND",
+                "message": "Тип оплаты «CALL CENTRE BASE» не найден в iiko для этой точки.",
+                "availablePaymentTypes": [x.get("name") for x in rows if x.get("name")][:80],
+            }
+
+        processing = str(row.get("paymentProcessingType") or "")
         return {
             "method": "REMOTE",
-            "id": os.environ.get(
-                "IIKO_CALL_CENTRE_PAYMENT_TYPE_ID",
-                os.environ.get(
-                    "IIKO_KIOSK_PAYMENT_TYPE_ID",
-                    "d89a8bf4-b3d1-4625-8de3-6b0ef162e0c3",
-                ),
-            ),
-            "name": "Удалённая оплата",
-            "paymentTypeKind": "Card",
-            "isProcessedExternally": True,
+            "id": row["id"],
+            "name": row["name"],
+            "paymentTypeKind": row.get("paymentTypeKind") or "Card",
+            "paymentProcessingType": processing,
+            "isProcessedExternally": processing.casefold() == "external",
         }, None
 
     rows, error = _call_centre_payment_types(organization_id)
