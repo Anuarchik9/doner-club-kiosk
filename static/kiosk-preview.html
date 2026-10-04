@@ -1457,7 +1457,7 @@ function openTestIiko(){
   document.getElementById('modalRoot').innerHTML=
     '<div class="overlay"><div class="modal">'+
       '<h2>'+t('Тестовый заказ в iiko','iiko-ға тест тапсырыс',"Test order in iiko")+'</h2>'+
-      '<div class="testIikoNotice">'+t('На этом экране ничего не отправляется автоматически. Оплаченный тестовый заказ уйдёт в iiko только после нажатия зелёной кнопки и двух подтверждений.','Бұл экранда ештеңе автоматты түрде жіберілмейді. Төленген тест тапсырыс тек жасыл батырманы басып, екі рет растағаннан кейін iiko-ға жіберіледі.',"Nothing is sent automatically. A paid test order is sent to iiko only after pressing the green button and confirming twice.")+'</div>'+
+      '<div class="testIikoNotice">'+t('Ничего не отправляется автоматически. После подтверждения заказ поступит на кухню без оплаты и без автоматического закрытия.','Ештеңе автоматты түрде жіберілмейді. Растаудан кейін тапсырыс ас үйге төлемсіз және автоматты жабусыз түседі.','Nothing is sent automatically. After confirmation the order goes to the kitchen without payment or automatic closure.')+'</div>'+
       '<div class="testIikoPanel" id="testIikoPanel"><div class="testIikoStatus" id="testIikoStatus">'+t('Получаю кассы '+KIOSK_CONTEXT.displayRu+' из iiko…',KIOSK_CONTEXT.displayKz+' кассаларын iiko-дан алып жатырмын…','Loading registers for '+pointLabel()+' from iiko…')+'</div></div>'+
       '<button class="testIikoBack" id="testIikoBack">'+t('Назад в корзину','Себетке қайту',"Back to cart")+'</button>'+
     '</div></div>';
