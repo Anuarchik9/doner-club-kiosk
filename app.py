@@ -1,3 +1,5 @@
+import hmac
+import json
 import math
 import os
 import threading
@@ -1313,6 +1315,149 @@ def kiosk_test_paid_order():
     except Exception as error:
         return jsonify({"success": False, "code": "KIOSK_PAID_TEST_ORDER_ERROR", "message": str(error)}), 500
 
+
+
+
+REPUBLIC_ORGANIZATION_ID = "9f2c2c10-a4e8-4e80-ac1d-beedf7d5182e"
+IIKO_ITEM_STATUSES = {
+    "Added",
+    "PrintedNotCooking",
+    "CookingStarted",
+    "CookingCompleted",
+    "Served",
+}
+
+
+def _iiko_webhook_authorized():
+    expected = str(os.environ.get("IIKO_WEBHOOK_AUTH_TOKEN") or "").strip()
+    if not expected:
+        # Fail closed in production: iiko webhook receiver is useless without
+        # a shared secret and must not accept arbitrary public requests.
+        return False
+
+    supplied = str(request.headers.get("Authorization") or "").strip()
+    candidates = [supplied]
+    if supplied.lower().startswith("bearer "):
+        candidates.append(supplied[7:].strip())
+    return any(hmac.compare_digest(expected, value) for value in candidates if value)
+
+
+def _collect_iiko_item_statuses(value, out):
+    if isinstance(value, dict):
+        status = value.get("status")
+        if status in IIKO_ITEM_STATUSES:
+            out.append(str(status))
+        for key, child in value.items():
+            if key in {"customer", "payments"}:
+                continue
+            if isinstance(child, (dict, list)):
+                _collect_iiko_item_statuses(child, out)
+    elif isinstance(value, list):
+        for child in value:
+            _collect_iiko_item_statuses(child, out)
+
+
+def _guest_kitchen_stage(order):
+    statuses = []
+    _collect_iiko_item_statuses((order or {}).get("items") or [], statuses)
+    unique = sorted(set(statuses))
+
+    if not statuses:
+        return "unknown", unique
+    if all(status == "Served" for status in statuses):
+        return "served", unique
+    if all(status in {"CookingCompleted", "Served"} for status in statuses):
+        return "ready", unique
+    if any(status == "CookingStarted" for status in statuses):
+        return "cooking", unique
+    if any(status in {"Added", "PrintedNotCooking"} for status in statuses):
+        return "accepted", unique
+    return "unknown", unique
+
+
+@app.route("/iiko/webhook", methods=["GET", "POST"])
+def iiko_webhook():
+    if request.method == "GET":
+        return jsonify(
+            success=True,
+            service="Doner Club iiko webhook",
+            configured=bool(os.environ.get("IIKO_WEBHOOK_AUTH_TOKEN")),
+        )
+
+    if not _iiko_webhook_authorized():
+        return jsonify(success=False, code="UNAUTHORIZED"), 401
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify(success=False, code="INVALID_JSON"), 400
+
+    organization_id = str(payload.get("organizationId") or "").strip()
+    if organization_id.casefold() != REPUBLIC_ORGANIZATION_ID.casefold():
+        # Acknowledge unrelated events so iiko does not retry them.
+        return jsonify(success=True, ignored=True)
+
+    event_type = str(payload.get("eventType") or "").strip()
+    event_info = payload.get("eventInfo") if isinstance(payload.get("eventInfo"), dict) else {}
+    order = event_info.get("order") if isinstance(event_info.get("order"), dict) else {}
+    guest_stage, item_statuses = _guest_kitchen_stage(order)
+
+    diagnostic = {
+        "eventType": event_type,
+        "organizationId": organization_id,
+        "orderId": event_info.get("id"),
+        "posId": event_info.get("posId"),
+        "externalNumber": event_info.get("externalNumber"),
+        "creationStatus": event_info.get("creationStatus"),
+        "orderStatus": order.get("status"),
+        "itemStatuses": item_statuses,
+        "guestStage": guest_stage,
+    }
+    print(
+        "IIKO_WEBHOOK_EVENT " + json.dumps(diagnostic, ensure_ascii=False, separators=(",", ":")),
+        flush=True,
+    )
+
+    # Telegram delivery is intentionally not triggered yet. First we record one
+    # real Republic order to verify how every kitchen item (including drinks)
+    # changes status in this installation.
+    return jsonify(success=True)
+
+
+def _log_current_iiko_webhook_settings_once():
+    time.sleep(10)
+    try:
+        response = iiko_kiosk_post(
+            "/api/1/webhooks/settings",
+            {"organizationId": REPUBLIC_ORGANIZATION_ID},
+            timeout=25,
+        )
+        if not response.ok:
+            print(
+                "IIKO_WEBHOOK_SETTINGS " + json.dumps({
+                    "statusCode": response.status_code,
+                    "error": response.text[:500],
+                }, ensure_ascii=False),
+                flush=True,
+            )
+            return
+
+        data = response.json()
+        sanitized = {
+            "statusCode": response.status_code,
+            "apiLoginName": data.get("apiLoginName"),
+            "webHooksUri": data.get("webHooksUri"),
+            "authTokenPresent": bool(data.get("authToken")),
+            "webHooksFilter": data.get("webHooksFilter") or {},
+        }
+        print(
+            "IIKO_WEBHOOK_SETTINGS " + json.dumps(sanitized, ensure_ascii=False, separators=(",", ":")),
+            flush=True,
+        )
+    except Exception as error:
+        print("IIKO_WEBHOOK_SETTINGS_ERROR " + str(error), flush=True)
+
+
+threading.Thread(target=_log_current_iiko_webhook_settings_once, daemon=True).start()
 
 
 @app.post("/kiosk-crm-register")
