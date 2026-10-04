@@ -1963,6 +1963,107 @@ def _resolve_call_centre_payment(organization_id, method, terminal_group_id=None
     }, None
 
 
+
+def _call_centre_discounts(organization_id):
+    response = iiko_kiosk_post(
+        "/api/1/discounts",
+        {"organizationIds": [organization_id]},
+        timeout=30,
+    )
+    if not response.ok:
+        return [], {
+            "code": "IIKO_DISCOUNTS_FAILED",
+            "statusCode": response.status_code,
+            "details": response.text[:1200],
+        }
+
+    payload = response.json()
+    rows = []
+    for wrapper in payload.get("discounts") or []:
+        if not isinstance(wrapper, dict):
+            continue
+        if str(wrapper.get("organizationId") or "") != str(organization_id):
+            continue
+        for item in wrapper.get("items") or []:
+            if not isinstance(item, dict) or item.get("isDeleted"):
+                continue
+            row = {
+                "id": str(item.get("id") or ""),
+                "name": str(item.get("name") or ""),
+                "percent": float(item.get("percent") or 0),
+                "sum": float(item.get("sum") or 0),
+                "mode": str(item.get("mode") or ""),
+                "comment": str(item.get("comment") or ""),
+                "minOrderSum": float(item.get("minOrderSum") or 0),
+                "isManual": bool(item.get("isManual")),
+                "isCard": bool(item.get("isCard")),
+                "isAutomatic": bool(item.get("isAutomatic")),
+                "isCategorisedDiscount": bool(item.get("isCategorisedDiscount")),
+                "canBeAppliedSelectively": bool(item.get("canBeAppliedSelectively")),
+                "canApplyByCardNumber": bool(item.get("canApplyByCardNumber")),
+                "productCategoryDiscounts": item.get("productCategoryDiscounts") or [],
+            }
+            if row["id"] and row["name"]:
+                rows.append(row)
+    return rows, None
+
+
+def _call_centre_discount_supported(row):
+    if not row or row.get("isCategorisedDiscount"):
+        return False
+    mode = str(row.get("mode") or "")
+    if mode == "Percent":
+        return float(row.get("percent") or 0) > 0
+    if mode in {"FixedSum", "FlexibleSum"}:
+        return float(row.get("sum") or 0) > 0
+    return False
+
+
+def _call_centre_discount_amount(row, subtotal):
+    subtotal = max(0.0, float(subtotal or 0))
+    if not row:
+        return 0.0
+    if subtotal + 1e-9 < float(row.get("minOrderSum") or 0):
+        raise ValueError("ORDER_BELOW_DISCOUNT_MINIMUM")
+    mode = str(row.get("mode") or "")
+    if row.get("isCategorisedDiscount"):
+        raise ValueError("CATEGORISED_DISCOUNT_NOT_SUPPORTED")
+    if mode == "Percent":
+        amount = subtotal * max(0.0, float(row.get("percent") or 0)) / 100.0
+    elif mode in {"FixedSum", "FlexibleSum"}:
+        amount = max(0.0, float(row.get("sum") or 0))
+    else:
+        raise ValueError("DISCOUNT_MODE_NOT_SUPPORTED")
+    return round(min(subtotal, amount) + 1e-9, 2)
+
+
+@app.get("/call-centre-discounts")
+def call_centre_discounts():
+    if not _call_centre_key_authorized():
+        return jsonify(success=False, code="CALL_CENTRE_UNAUTHORIZED"), 401
+    point = str(request.args.get("point") or "RESPUBLIKA").strip()
+    try:
+        target, error_payload, status_code = _resolve_kiosk_order_target(point)
+        if error_payload:
+            return jsonify(error_payload), status_code
+        rows, error = _call_centre_discounts(target["organizationId"])
+        if error:
+            return jsonify(success=False, **error), 502
+        return jsonify(
+            success=True,
+            point=point,
+            discounts=[
+                {
+                    **row,
+                    "supported": _call_centre_discount_supported(row),
+                }
+                for row in sorted(rows, key=lambda x: x.get("name", "").casefold())
+            ],
+        )
+    except Exception as error:
+        return jsonify(success=False, code="CALL_CENTRE_DISCOUNTS_ERROR", message=str(error)), 500
+
+
 @app.get("/call-centre-payment-options")
 def call_centre_payment_options():
     if not _call_centre_key_authorized():
