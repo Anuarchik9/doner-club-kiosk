@@ -17,8 +17,10 @@ class KioskTests(unittest.TestCase):
         self.env = patch.dict(os.environ, {"IIKO_KIOSK_API_KEY": "test-only"})
         self.env.start()
         self.addCleanup(self.env.stop)
-        self.validate = patch.object(kiosk, "_validate_point_terminal_table", return_value=(
+        self.validate = patch.object(kiosk, "_validate_point_terminal", return_value=(
             {"organizationId": "org"}, None, 200)).start()
+        self.payment = patch.object(kiosk, "_resolve_kiosk_payment", return_value=(
+            {"id": "existing-card", "name": "Bank card", "paymentTypeKind": "Card", "isProcessedExternally": True}, None)).start()
         self.availability = patch.object(kiosk, "check_order_availability", return_value=None).start()
         self.post = patch.object(kiosk, "iiko_kiosk_post").start()
         self.wait = patch.object(kiosk, "_wait_command").start()

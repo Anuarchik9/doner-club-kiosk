@@ -2,6 +2,7 @@ import hmac
 import json
 import math
 import os
+import re
 import threading
 import time
 import uuid
@@ -713,7 +714,7 @@ def _normalize_order_items(incoming_items):
     return order_items
 
 
-def _validate_point_terminal_table(point, terminal_group_id, table_id):
+def _validate_point_terminal(point, terminal_group_id):
     department, available_departments = find_department(point)
     if not department:
         return None, {
@@ -735,21 +736,6 @@ def _validate_point_terminal_table(point, terminal_group_id, table_id):
             "success": False,
             "code": "INVALID_TERMINAL_GROUP",
             "message": f"Selected terminal group does not belong to {department.get('name') or point}.",
-        }, 400
-
-    sections, _ = get_restaurant_sections_for_terminal_groups([terminal_group_id])
-    allowed_table_ids = {
-        str(table.get("id"))
-        for section in sections
-        for table in (section.get("tables") or [])
-        if table.get("id")
-    }
-
-    if table_id not in allowed_table_ids:
-        return None, {
-            "success": False,
-            "code": "INVALID_TABLE",
-            "message": "Selected table is not available for this terminal group.",
         }, 400
 
     return {
@@ -808,41 +794,12 @@ def _resolve_kiosk_order_target(point):
         )
 
     terminal_group_id = str(selected_group["id"])
-    sections, _ = get_restaurant_sections_for_terminal_groups([terminal_group_id])
-    tables = [
-        table
-        for section in sections
-        for table in (section.get("tables") or [])
-        if table.get("id")
-    ]
-    if not tables:
-        return None, {
-            "success": False,
-            "code": "KIOSK_TABLE_NOT_FOUND",
-            "message": "iiko did not return a table for the kiosk terminal group.",
-        }, 503
-
-    configured_table = str(os.environ.get(f"IIKO_KIOSK_{prefix}_TABLE_ID") or "").strip()
-    if configured_table:
-        selected_table = next((table for table in tables if str(table["id"]) == configured_table), None)
-        if not selected_table:
-            return None, {
-                "success": False,
-                "code": "CONFIGURED_KIOSK_TABLE_INVALID",
-                "message": f"Configured kiosk table is not available for {point}.",
-            }, 503
-    else:
-        selected_table = tables[0]
-
     return {
         "department": department,
         "organizationId": organization_id,
         "terminalGroupId": terminal_group_id,
         "terminalGroupName": selected_group.get("name"),
         "terminalGroupAlive": alive.get(terminal_group_id),
-        "tableId": str(selected_table["id"]),
-        "tableName": selected_table.get("name") or selected_table.get("number"),
-        "sectionName": selected_table.get("sectionName"),
     }, None, 200
 
 
@@ -1123,14 +1080,9 @@ def kiosk_iiko_config():
         terminal_groups, _ = get_terminal_groups_for_organization(organization_id)
         terminal_group_ids = [group["id"] for group in terminal_groups]
         alive = get_terminal_groups_alive(organization_id, terminal_group_ids)
-        sections, _ = get_restaurant_sections_for_terminal_groups(terminal_group_ids)
 
         for group in terminal_groups:
             group["isAlive"] = alive.get(str(group["id"]))
-
-        tables = []
-        for section in sections:
-            tables.extend(section.get("tables") or [])
 
         response = jsonify({
             "success": True,
@@ -1140,9 +1092,8 @@ def kiosk_iiko_config():
                 "organizationId": organization_id,
             },
             "terminalGroups": terminal_groups,
-            "restaurantSections": sections,
-            "tables": tables,
-            "canSendTestOrder": bool(terminal_groups and tables),
+            "selfService": True,
+            "canSendTestOrder": bool(terminal_groups),
         })
         response.headers["Cache-Control"] = "no-store"
         return response
@@ -1178,14 +1129,13 @@ def kiosk_test_order():
 
     point = str(data.get("point") or "Arai").strip()
     terminal_group_id = str(data.get("terminalGroupId") or "").strip()
-    table_id = str(data.get("tableId") or "").strip()
     incoming_items = data.get("items") or []
 
-    if not terminal_group_id or not table_id or not incoming_items:
+    if not terminal_group_id or not incoming_items:
         return jsonify({
             "success": False,
             "code": "INVALID_TEST_ORDER",
-            "message": "terminalGroupId, tableId and items are required.",
+            "message": "terminalGroupId and items are required.",
         }), 400
 
     try:
@@ -1201,9 +1151,7 @@ def kiosk_test_order():
                 "message": "IIKO_KIOSK_API_KEY is not configured.",
             }), 503
 
-        validated, error_payload, status_code = _validate_point_terminal_table(
-            point, terminal_group_id, table_id
-        )
+        validated, error_payload, status_code = _validate_point_terminal(point, terminal_group_id)
         if error_payload:
             return jsonify(error_payload), status_code
 
@@ -1221,10 +1169,9 @@ def kiosk_test_order():
                 "checkStopList": True,
             },
             "order": {
-                "tableIds": [table_id],
                 "items": order_items,
                 "guests": {"count": 1, "splitBetweenPersons": False},
-                "comment": "TEST KIOSK — БЕЗ ОПЛАТЫ",
+                "tabName": "",
             },
         }
 
@@ -1257,7 +1204,6 @@ def kiosk_test_order():
             "message": "Test order request was sent to iiko.",
             "organizationId": organization_id,
             "terminalGroupId": terminal_group_id,
-            "tableId": table_id,
             "servicePrintRequested": True,
             "commandStatus": command_status,
             "iiko": result,
@@ -1283,9 +1229,21 @@ def _live_kiosk_payments_enabled():
 def kiosk_payment_readiness():
     bridge_token_configured = bool(str(os.environ.get("KIOSK_BRIDGE_ORDER_TOKEN") or "").strip())
     iiko_configured = bool(os.environ.get("IIKO_KIOSK_API_KEY"))
+    ready = _live_kiosk_payments_enabled() and iiko_configured and bridge_token_configured
+    warning = None
+    if ready:
+        try:
+            target, warning, _ = _resolve_kiosk_order_target("RESPUBLIKA")
+            if not warning:
+                _, warning = _resolve_kiosk_payment(target["organizationId"], target["terminalGroupId"], "RESPUBLIKA")
+            ready = not warning
+        except Exception:
+            ready = False
+            warning = {"code": "PAYMENT_CONFIGURATION_UNAVAILABLE"}
     return jsonify(
         success=True,
-        ready=_live_kiosk_payments_enabled() and iiko_configured and bridge_token_configured,
+        ready=ready,
+        warning=warning,
         point="RESPUBLIKA",
         iikoConfigured=iiko_configured,
         bridgeTokenRequired=bridge_token_configured,
@@ -1378,12 +1336,6 @@ def kiosk_paid_order():
     process_id = str(data.get("paymentProcessId") or "").strip()
     payment_status = str(data.get("paymentSubStatus") or "").strip()
     phone = str(data.get("phone") or "").strip() or None
-    discount_id = str(data.get("discountId") or "").strip()
-    discount_name = str(data.get("discountName") or "").strip()[:160]
-    try:
-        requested_discount_sum = float(data.get("discountSum") or 0)
-    except (TypeError, ValueError, OverflowError):
-        requested_discount_sum = -1
     incoming_items = data.get("items") or []
 
     if not process_id:
@@ -1432,62 +1384,13 @@ def kiosk_paid_order():
 
         organization_id = target["organizationId"]
         terminal_group_id = target["terminalGroupId"]
-        table_id = target["tableId"]
 
-        subtotal = _call_centre_items_subtotal(order_items)
-        applied_discount = None
-        discount_sum = 0.0
-        if discount_id:
-            discount_rows, discount_error = _call_centre_discounts(organization_id)
-            if discount_error:
-                return jsonify(success=False, **discount_error), 502
-            applied_discount = next((row for row in discount_rows if row.get("id") == discount_id), None)
-            if not applied_discount:
-                return jsonify(
-                    success=False,
-                    code="DISCOUNT_NOT_FOUND",
-                    message="Selected iiko discount is no longer available.",
-                ), 409
-            if not _call_centre_discount_supported(applied_discount):
-                return jsonify(
-                    success=False,
-                    code="DISCOUNT_NOT_SUPPORTED",
-                    message="This iiko discount cannot be safely applied by CALL CENTRE.",
-                    discount=applied_discount,
-                ), 409
-            try:
-                discount_sum = _call_centre_discount_amount(applied_discount, subtotal)
-            except ValueError as error:
-                return jsonify(
-                    success=False,
-                    code=str(error),
-                    message="Selected iiko discount cannot be applied to this order.",
-                    discount=applied_discount,
-                ), 409
-            if requested_discount_sum < 0 or abs(requested_discount_sum - discount_sum) > 0.011:
-                return jsonify(
-                    success=False,
-                    code="DISCOUNT_SUM_MISMATCH",
-                    expectedDiscountSum=discount_sum,
-                    requestedDiscountSum=requested_discount_sum,
-                ), 409
-
-        expected_payment_sum = round(max(0.0, subtotal - discount_sum) + 1e-9, 2)
-        if abs(payment_sum - expected_payment_sum) > 0.011:
-            return jsonify(
-                success=False,
-                code="PAYMENT_SUM_MISMATCH",
-                subtotal=subtotal,
-                discountSum=discount_sum,
-                expectedPaymentSum=expected_payment_sum,
-                paymentSum=payment_sum,
-            ), 409
         order_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"donerclub:kiosk:{point}:{process_id}"))
-        external_number = ("KIOSK-" + process_id)[-50:]
-        payment_type_id = os.environ.get(
-            "IIKO_KIOSK_PAYMENT_TYPE_ID",
-            "d89a8bf4-b3d1-4625-8de3-6b0ef162e0c3",
-        )
+        external_number = process_id[-50:]
+        payment_info, payment_error = _resolve_kiosk_payment(organization_id, terminal_group_id, point)
+        if payment_error:
+            return jsonify(success=False, **payment_error), 409
+        payment_type_id = payment_info["id"]
 
         existing = _table_order_by_id(organization_id, order_id)
         if existing and existing.get("creationStatus") == "Success":
@@ -1540,18 +1443,17 @@ def kiosk_paid_order():
         order_payload = {
             "id": order_id,
             "externalNumber": external_number,
-            "tableIds": [table_id],
             "items": order_items,
             "guests": {"count": 1, "splitBetweenPersons": False},
+                "tabName": "",
             "payments": [{
-                "paymentTypeKind": "Card",
+                "paymentTypeKind": payment_info["paymentTypeKind"],
                 "sum": payment_sum,
                 "paymentTypeId": payment_type_id,
                 "isProcessedExternally": True,
                 "isFiscalizedExternally": False,
                 "isPrepay": False,
             }],
-            "comment": f"KIOSK · KASPI SMART POS · {process_id}",
         }
         if phone:
             order_payload["phone"] = phone
@@ -1669,7 +1571,7 @@ def kiosk_paid_order():
             orderId=order_id,
             externalNumber=external_number,
             payment={
-                "method": payment_method,
+                "method": "KASPI_SMART_POS",
                 "name": payment_info.get("name"),
                 "paymentTypeId": payment_type_id if payment_sum > 0 else None,
                 "paymentTypeKind": payment_info.get("paymentTypeKind") if payment_sum > 0 else None,
@@ -1721,7 +1623,6 @@ def kiosk_test_paid_order():
 
     point = str(data.get("point") or "Arai").strip()
     terminal_group_id = str(data.get("terminalGroupId") or "").strip()
-    table_id = str(data.get("tableId") or "").strip()
     incoming_items = data.get("items") or []
 
     try:
@@ -1736,11 +1637,11 @@ def kiosk_test_paid_order():
             "message": "For the temporary paid test, paymentSum must be greater than 0 and no more than 5000 KZT.",
         }), 400
 
-    if not terminal_group_id or not table_id or not incoming_items:
+    if not terminal_group_id or not incoming_items:
         return jsonify({
             "success": False,
             "code": "INVALID_PAID_TEST_ORDER",
-            "message": "terminalGroupId, tableId and items are required.",
+            "message": "terminalGroupId and items are required.",
         }), 400
 
     try:
@@ -1756,9 +1657,7 @@ def kiosk_test_paid_order():
                 "message": "IIKO_KIOSK_API_KEY is not configured.",
             }), 503
 
-        validated, error_payload, status_code = _validate_point_terminal_table(
-            point, terminal_group_id, table_id
-        )
+        validated, error_payload, status_code = _validate_point_terminal(point, terminal_group_id)
         if error_payload:
             return jsonify(error_payload), status_code
 
@@ -1767,10 +1666,10 @@ def kiosk_test_paid_order():
             return jsonify(rejection), 409
 
         organization_id = validated["organizationId"]
-        payment_type_id = os.environ.get(
-            "IIKO_KIOSK_PAYMENT_TYPE_ID",
-            "d89a8bf4-b3d1-4625-8de3-6b0ef162e0c3",
-        )
+        payment_info, payment_error = _resolve_kiosk_payment(organization_id, terminal_group_id, point)
+        if payment_error:
+            return jsonify(success=False, **payment_error), 409
+        payment_type_id = payment_info["id"]
 
         payload = {
             "organizationId": organization_id,
@@ -1781,18 +1680,17 @@ def kiosk_test_paid_order():
                 "checkStopList": True,
             },
             "order": {
-                "tableIds": [table_id],
                 "items": order_items,
                 "guests": {"count": 1, "splitBetweenPersons": False},
+                "tabName": "",
                 "payments": [{
-                    "paymentTypeKind": "Card",
+                    "paymentTypeKind": payment_info["paymentTypeKind"],
                     "sum": payment_sum,
                     "paymentTypeId": payment_type_id,
                     "isProcessedExternally": True,
                     "isFiscalizedExternally": False,
                     "isPrepay": False,
                 }],
-                "comment": "PAID TEST KIOSK — ВНЕШНЯЯ ТЕСТОВАЯ ОПЛАТА",
             },
         }
 
@@ -1866,10 +1764,9 @@ def kiosk_test_paid_order():
             "message": "Paid test order was created and close was requested in iiko.",
             "organizationId": organization_id,
             "terminalGroupId": terminal_group_id,
-            "tableId": table_id,
             "payment": {
                 "paymentTypeId": payment_type_id,
-                "paymentTypeKind": "Card",
+                "paymentTypeKind": payment_info["paymentTypeKind"],
                 "sum": payment_sum,
                 "isProcessedExternally": True,
                 "isFiscalizedExternally": False,
@@ -1964,6 +1861,29 @@ def _payment_name_key(value):
     return re.sub(r"[^a-zа-я0-9]+", " ", str(value or "").casefold()).strip()
 
 
+def _is_technical_payment(row):
+    return bool(set(_payment_name_key(row.get("name")).split()) & {"kiosk", "analytics"})
+
+
+def _resolve_kiosk_payment(organization_id, terminal_group_id, point):
+    prefix = _kiosk_point_env_prefix(point)
+    payment_id = str(os.environ.get(f"IIKO_KIOSK_{prefix}_PAYMENT_TYPE_ID")
+                     or os.environ.get("IIKO_KIOSK_PAYMENT_TYPE_ID") or "").strip()
+    if not payment_id:
+        return None, {"code": "KIOSK_PAYMENT_MAPPING_REQUIRED",
+                      "message": "Настройте существующий тип оплаты iiko для полученной оплаты. Тестовый тип Kiosk не используется."}
+    rows, error = _call_centre_payment_types(organization_id)
+    if error:
+        return None, error
+    row = next((r for r in rows if r["id"] == payment_id), None)
+    if (not row or row.get("paymentTypeKind") != "Card"
+            or _is_technical_payment(row)
+            or (row.get("terminalGroupIds") and terminal_group_id not in row["terminalGroupIds"])):
+        return None, {"code": "KIOSK_PAYMENT_MAPPING_INVALID",
+                      "message": "Нужен действующий тип безналичной оплаты этой точки; технические Kiosk/Analytics запрещены."}
+    return dict(row, isProcessedExternally=True), None
+
+
 def _find_internal_payment_type(rows, method, terminal_group_id=None):
     method = str(method or "").strip().upper()
     aliases = {
@@ -2016,6 +1936,9 @@ def _resolve_call_centre_payment(organization_id, method, terminal_group_id=None
                 "availablePaymentTypes": [x.get("name") for x in rows if x.get("name")][:80],
             }
 
+        if _is_technical_payment(row):
+            return None, {"code": "TECHNICAL_PAYMENT_TYPE_FORBIDDEN",
+                          "message": "Технические типы оплаты Kiosk/Analytics больше не используются."}
         processing = str(row.get("paymentProcessingType") or "")
         return {
             "method": "REMOTE",
@@ -2230,6 +2153,12 @@ def call_centre_order():
     request_id = str(data.get("requestId") or "").strip()
     operator = str(data.get("operator") or "operator").strip()[:80]
     phone = str(data.get("phone") or "").strip() or None
+    discount_id = str(data.get("discountId") or "").strip()
+    discount_name = str(data.get("discountName") or "").strip()[:160]
+    try:
+        requested_discount_sum = float(data.get("discountSum") or 0)
+    except (TypeError, ValueError, OverflowError):
+        requested_discount_sum = -1
     incoming_items = data.get("items") or []
 
     if not request_id or len(request_id) > 120:
@@ -2263,9 +2192,56 @@ def call_centre_order():
 
         organization_id = target["organizationId"]
         terminal_group_id = target["terminalGroupId"]
-        table_id = target["tableId"]
+        subtotal = _call_centre_items_subtotal(order_items)
+        applied_discount = None
+        discount_sum = 0.0
+        if discount_id:
+            discount_rows, discount_error = _call_centre_discounts(organization_id)
+            if discount_error:
+                return jsonify(success=False, **discount_error), 502
+            applied_discount = next((row for row in discount_rows if row.get("id") == discount_id), None)
+            if not applied_discount:
+                return jsonify(
+                    success=False,
+                    code="DISCOUNT_NOT_FOUND",
+                    message="Selected iiko discount is no longer available.",
+                ), 409
+            if not _call_centre_discount_supported(applied_discount):
+                return jsonify(
+                    success=False,
+                    code="DISCOUNT_NOT_SUPPORTED",
+                    message="This iiko discount cannot be safely applied by CALL CENTRE.",
+                    discount=applied_discount,
+                ), 409
+            try:
+                discount_sum = _call_centre_discount_amount(applied_discount, subtotal)
+            except ValueError as error:
+                return jsonify(
+                    success=False,
+                    code=str(error),
+                    message="Selected iiko discount cannot be applied to this order.",
+                    discount=applied_discount,
+                ), 409
+            if requested_discount_sum < 0 or abs(requested_discount_sum - discount_sum) > 0.011:
+                return jsonify(
+                    success=False,
+                    code="DISCOUNT_SUM_MISMATCH",
+                    expectedDiscountSum=discount_sum,
+                    requestedDiscountSum=requested_discount_sum,
+                ), 409
+
+        expected_payment_sum = round(max(0.0, subtotal - discount_sum) + 1e-9, 2)
+        if abs(payment_sum - expected_payment_sum) > 0.011:
+            return jsonify(
+                success=False,
+                code="PAYMENT_SUM_MISMATCH",
+                subtotal=subtotal,
+                discountSum=discount_sum,
+                expectedPaymentSum=expected_payment_sum,
+                paymentSum=payment_sum,
+            ), 409
         order_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"donerclub:call-centre:{point}:{request_id}"))
-        external_number = ("CALL-" + request_id)[-50:]
+        external_number = request_id[-50:]
         payment_info, payment_error = _resolve_call_centre_payment(
             organization_id,
             "REMOTE",
@@ -2304,13 +2280,9 @@ def call_centre_order():
         order_payload = {
             "id": order_id,
             "externalNumber": external_number,
-            "tableIds": [table_id],
             "items": order_items,
             "guests": {"count": 1, "splitBetweenPersons": False},
-            "comment": (
-                f"CALL CENTRE · {operator} · {payment_info['name']} · КЛИЕНТ ОПЛАТИЛ УДАЛЕННО"
-                + (f" · СКИДКА: {applied_discount.get('name')}" if applied_discount else "")
-            ),
+                "tabName": "",
         }
         if applied_discount:
             order_payload["discountsInfo"] = {

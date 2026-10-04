@@ -48,7 +48,7 @@ class AvailabilityTests(unittest.TestCase):
                                              ([], {'acceptsOrders': False}, 'POINT_CLOSED')):
                 with self.subTest(route=route, expected=expected), \
                      patch.dict(kiosk.os.environ, {'IIKO_KIOSK_API_KEY': 'test'}), \
-                     patch.object(kiosk, '_validate_point_terminal_table', return_value=({'organizationId': 'org', 'department': self.department}, None, 200)), \
+                     patch.object(kiosk, '_validate_point_terminal', return_value=({'organizationId': 'org', 'department': self.department}, None, 200)), \
                      patch.object(kiosk, 'combined_availability', return_value=(stopped, [], state)), \
                      patch.object(kiosk, 'iiko_kiosk_post') as send:
                     response = self.client.post(route, json={'confirm': confirm, 'acknowledgeFinancialEffect': True,
