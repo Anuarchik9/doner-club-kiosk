@@ -1326,6 +1326,34 @@ def order_status_capabilities():
 
         organization_id = department["organizationId"]
 
+        probe_order_id = "00000000-0000-0000-0000-000000000000"
+        status_probe_response = iiko_kiosk_post(
+            "/api/1/orders/status",
+            {"organizationId": organization_id, "orderIds": [probe_order_id]},
+            timeout=20,
+        )
+        webhook_probe_response = iiko_kiosk_post(
+            "/api/1/webhooks/settings",
+            {"organizationId": organization_id},
+            timeout=20,
+        )
+        probes = {
+            "ordersStatus": {
+                "statusCode": status_probe_response.status_code,
+                "allowed": status_probe_response.status_code not in (401, 403),
+                "body": status_probe_response.text[:500],
+            },
+            "webhooksSettings": {
+                "statusCode": webhook_probe_response.status_code,
+                "allowed": webhook_probe_response.status_code not in (401, 403),
+                "body": (
+                    "OK"
+                    if webhook_probe_response.ok
+                    else webhook_probe_response.text[:500]
+                ),
+            },
+        }
+
         tables_response = iiko_kiosk_post(
             "/api/1/tables",
             {"organizationIds": [organization_id]},
@@ -1337,6 +1365,7 @@ def order_status_capabilities():
                 code="TABLES_QUERY_FAILED",
                 statusCode=tables_response.status_code,
                 details=tables_response.text[:800],
+                probes=probes,
             ), 502
         tables_data = tables_response.json()
         table_ids = [
@@ -1417,6 +1446,7 @@ def order_status_capabilities():
             "orderStatuses": order_status_counts,
             "creationStatuses": creation_status_counts,
             "itemStatuses": item_status_counts,
+            "probes": probes,
             "samples": sanitized_samples,
         })
         result.headers["Cache-Control"] = "no-store"
