@@ -1410,6 +1410,21 @@ def order_status_capabilities():
     except Exception as error:
         return jsonify(success=False, code="DIAGNOSTIC_ERROR", message=str(error)), 500
 
+
+def _log_republic_order_status_once():
+    time.sleep(12)
+    try:
+        port = os.environ.get("PORT", "10000")
+        response = requests.get(
+            f"http://127.0.0.1:{port}/internal/order-status-capabilities",
+            timeout=45,
+        )
+        print("ORDER_STATUS_DIAG " + response.text[:6000], flush=True)
+    except Exception as error:
+        print("ORDER_STATUS_DIAG_ERROR " + str(error), flush=True)
+
+threading.Thread(target=_log_republic_order_status_once, daemon=True).start()
+
 @app.post("/kiosk-crm-register")
 def kiosk_crm_register():
     payload = request.get_json(silent=True) or {}
