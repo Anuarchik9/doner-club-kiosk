@@ -1319,6 +1319,11 @@ def kiosk_test_paid_order():
 
 
 REPUBLIC_ORGANIZATION_ID = "9f2c2c10-a4e8-4e80-ac1d-beedf7d5182e"
+ARAI_ORGANIZATION_ID = "58e718ee-54ec-4604-beff-a172cc016879"
+IIKO_WEBHOOK_POINTS = {
+    REPUBLIC_ORGANIZATION_ID.casefold(): "RESPUBLIKA",
+    ARAI_ORGANIZATION_ID.casefold(): "ARAI",
+}
 IIKO_ITEM_STATUSES = {
     "Added",
     "PrintedNotCooking",
@@ -1392,7 +1397,8 @@ def iiko_webhook():
         return jsonify(success=False, code="INVALID_JSON"), 400
 
     organization_id = str(payload.get("organizationId") or "").strip()
-    if organization_id.casefold() != REPUBLIC_ORGANIZATION_ID.casefold():
+    point_code = IIKO_WEBHOOK_POINTS.get(organization_id.casefold())
+    if not point_code:
         # Acknowledge unrelated events so iiko does not retry them.
         return jsonify(success=True, ignored=True)
 
@@ -1403,6 +1409,7 @@ def iiko_webhook():
 
     diagnostic = {
         "eventType": event_type,
+        "point": point_code,
         "organizationId": organization_id,
         "orderId": event_info.get("id"),
         "posId": event_info.get("posId"),
@@ -1424,23 +1431,85 @@ def iiko_webhook():
 
 
 
-def _log_arai_department_once():
-    time.sleep(10)
+
+def _configure_arai_iiko_webhook_once():
+    time.sleep(12)
     try:
-        department, _ = find_department("Arai")
+        auth_token = str(os.environ.get("IIKO_WEBHOOK_AUTH_TOKEN") or "").strip()
+        if not auth_token:
+            print("ARAI_WEBHOOK_CONFIG skipped: missing auth token", flush=True)
+            return
+
+        settings_response = iiko_kiosk_post(
+            "/api/1/webhooks/settings",
+            {"organizationId": ARAI_ORGANIZATION_ID},
+            timeout=25,
+        )
+        if not settings_response.ok:
+            print(
+                "ARAI_WEBHOOK_CONFIG " + json.dumps({
+                    "success": False,
+                    "step": "settings",
+                    "statusCode": settings_response.status_code,
+                    "error": settings_response.text[:500],
+                }, ensure_ascii=False, separators=(",", ":")),
+                flush=True,
+            )
+            return
+
+        settings = settings_response.json()
+        current_uri = str(settings.get("webHooksUri") or "").strip()
+        target_uri = "https://kiosk.donerclub.kz/iiko/webhook"
+        if current_uri and current_uri != target_uri:
+            print(
+                "ARAI_WEBHOOK_CONFIG " + json.dumps({
+                    "success": False,
+                    "step": "conflict",
+                    "currentUri": current_uri,
+                    "targetUri": target_uri,
+                }, ensure_ascii=False, separators=(",", ":")),
+                flush=True,
+            )
+            return
+
+        payload = {
+            "organizationId": ARAI_ORGANIZATION_ID,
+            "webHooksUri": target_uri,
+            "authToken": auth_token,
+            "webHooksFilter": settings.get("webHooksFilter") or {
+                "tableOrderFilter": {
+                    "orderStatuses": ["New", "Bill", "Closed", "Deleted"],
+                    "itemStatuses": [
+                        "Added",
+                        "PrintedNotCooking",
+                        "CookingStarted",
+                        "CookingCompleted",
+                        "Served",
+                    ],
+                    "errors": True,
+                }
+            },
+        }
+        update_response = iiko_kiosk_post(
+            "/api/1/webhooks/update_settings",
+            payload,
+            timeout=25,
+        )
         print(
-            "ARAI_DEPARTMENT " + json.dumps({
-                "organizationId": (department or {}).get("organizationId"),
-                "code": (department or {}).get("code"),
-                "name": (department or {}).get("name"),
+            "ARAI_WEBHOOK_CONFIG " + json.dumps({
+                "success": bool(update_response.ok),
+                "step": "update",
+                "statusCode": update_response.status_code,
+                "targetUri": target_uri,
+                "response": update_response.text[:500],
             }, ensure_ascii=False, separators=(",", ":")),
             flush=True,
         )
     except Exception as error:
-        print("ARAI_DEPARTMENT_ERROR " + str(error), flush=True)
+        print("ARAI_WEBHOOK_CONFIG_ERROR " + str(error), flush=True)
 
 
-threading.Thread(target=_log_arai_department_once, daemon=True).start()
+threading.Thread(target=_configure_arai_iiko_webhook_once, daemon=True).start()
 
 
 @app.post("/kiosk-crm-register")
