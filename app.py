@@ -1867,6 +1867,12 @@ def _collect_payment_type_rows(value, out):
                 "id": str(value.get("id")),
                 "name": str(value.get("name") or ""),
                 "paymentTypeKind": str(kind),
+                "paymentProcessingType": str(value.get("paymentProcessingType") or ""),
+                "terminalGroupIds": [
+                    str(group.get("id"))
+                    for group in (value.get("terminalGroups") or [])
+                    if isinstance(group, dict) and group.get("id")
+                ],
                 "isDeleted": bool(value.get("isDeleted")),
             })
         for child in value.values():
@@ -1903,7 +1909,7 @@ def _payment_name_key(value):
     return re.sub(r"[^a-zа-я0-9]+", " ", str(value or "").casefold()).strip()
 
 
-def _find_internal_payment_type(rows, method):
+def _find_internal_payment_type(rows, method, terminal_group_id=None):
     method = str(method or "").strip().upper()
     aliases = {
         "DEPOSIT": ("депозит", "deposit"),
@@ -1911,13 +1917,16 @@ def _find_internal_payment_type(rows, method):
     }
     candidates = aliases.get(method, ())
     for row in rows:
+        groups = row.get("terminalGroupIds") or []
+        if terminal_group_id and groups and str(terminal_group_id) not in groups:
+            continue
         key = _payment_name_key(row.get("name"))
         if key in candidates or any(alias in key for alias in candidates):
             return row
     return None
 
 
-def _resolve_call_centre_payment(organization_id, method):
+def _resolve_call_centre_payment(organization_id, method, terminal_group_id=None):
     method = str(method or "REMOTE").strip().upper()
     if method == "REMOTE":
         return {
@@ -1937,7 +1946,7 @@ def _resolve_call_centre_payment(organization_id, method):
     rows, error = _call_centre_payment_types(organization_id)
     if error:
         return None, error
-    row = _find_internal_payment_type(rows, method)
+    row = _find_internal_payment_type(rows, method, terminal_group_id)
     if not row:
         return None, {
             "code": "PAYMENT_TYPE_NOT_FOUND",
@@ -1949,7 +1958,8 @@ def _resolve_call_centre_payment(organization_id, method):
         "id": row["id"],
         "name": row["name"],
         "paymentTypeKind": row.get("paymentTypeKind") or "Card",
-        "isProcessedExternally": True,
+        "paymentProcessingType": row.get("paymentProcessingType") or "",
+        "isProcessedExternally": str(row.get("paymentProcessingType") or "").casefold() == "external",
     }, None
 
 
@@ -1970,7 +1980,7 @@ def call_centre_payment_options():
             "available": True,
         }]
         for code, label in (("DEPOSIT", "Депозит"), ("FOOD", "Питание")):
-            row = _find_internal_payment_type(rows, code) if not payment_error else None
+            row = _find_internal_payment_type(rows, code, target.get("terminalGroupId")) if not payment_error else None
             options.append({
                 "code": code,
                 "name": row.get("name") if row else label,
@@ -2050,7 +2060,11 @@ def call_centre_order():
         table_id = target["tableId"]
         order_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"donerclub:call-centre:{point}:{request_id}"))
         external_number = ("CALL-" + request_id)[-50:]
-        payment_info, payment_error = _resolve_call_centre_payment(organization_id, payment_method)
+        payment_info, payment_error = _resolve_call_centre_payment(
+            organization_id,
+            payment_method,
+            terminal_group_id,
+        )
         if payment_error:
             return jsonify(success=False, **payment_error), 409
         payment_type_id = payment_info["id"]
