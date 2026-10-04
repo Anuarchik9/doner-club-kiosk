@@ -1424,92 +1424,11 @@ def iiko_webhook():
         flush=True,
     )
 
-    # Telegram delivery is intentionally not triggered yet. First we record one
-    # real Republic order to verify how every kitchen item (including drinks)
-    # changes status in this installation.
+    # Telegram delivery is intentionally not triggered yet. First we record real
+    # kitchen events from Arai/Republic to verify the exact status sequence.
     return jsonify(success=True)
 
 
-
-
-def _configure_arai_iiko_webhook_once():
-    time.sleep(12)
-    try:
-        auth_token = str(os.environ.get("IIKO_WEBHOOK_AUTH_TOKEN") or "").strip()
-        if not auth_token:
-            print("ARAI_WEBHOOK_CONFIG skipped: missing auth token", flush=True)
-            return
-
-        settings_response = iiko_kiosk_post(
-            "/api/1/webhooks/settings",
-            {"organizationId": ARAI_ORGANIZATION_ID},
-            timeout=25,
-        )
-        if not settings_response.ok:
-            print(
-                "ARAI_WEBHOOK_CONFIG " + json.dumps({
-                    "success": False,
-                    "step": "settings",
-                    "statusCode": settings_response.status_code,
-                    "error": settings_response.text[:500],
-                }, ensure_ascii=False, separators=(",", ":")),
-                flush=True,
-            )
-            return
-
-        settings = settings_response.json()
-        current_uri = str(settings.get("webHooksUri") or "").strip()
-        target_uri = "https://kiosk.donerclub.kz/iiko/webhook"
-        if current_uri and current_uri != target_uri:
-            print(
-                "ARAI_WEBHOOK_CONFIG " + json.dumps({
-                    "success": False,
-                    "step": "conflict",
-                    "currentUri": current_uri,
-                    "targetUri": target_uri,
-                }, ensure_ascii=False, separators=(",", ":")),
-                flush=True,
-            )
-            return
-
-        payload = {
-            "organizationId": ARAI_ORGANIZATION_ID,
-            "webHooksUri": target_uri,
-            "authToken": auth_token,
-            "webHooksFilter": settings.get("webHooksFilter") or {
-                "tableOrderFilter": {
-                    "orderStatuses": ["New", "Bill", "Closed", "Deleted"],
-                    "itemStatuses": [
-                        "Added",
-                        "PrintedNotCooking",
-                        "CookingStarted",
-                        "CookingCompleted",
-                        "Served",
-                    ],
-                    "errors": True,
-                }
-            },
-        }
-        update_response = iiko_kiosk_post(
-            "/api/1/webhooks/update_settings",
-            payload,
-            timeout=25,
-        )
-        print(
-            "ARAI_WEBHOOK_CONFIG " + json.dumps({
-                "success": bool(update_response.ok),
-                "step": "update",
-                "statusCode": update_response.status_code,
-                "targetUri": target_uri,
-                "response": update_response.text[:500],
-            }, ensure_ascii=False, separators=(",", ":")),
-            flush=True,
-        )
-    except Exception as error:
-        print("ARAI_WEBHOOK_CONFIG_ERROR " + str(error), flush=True)
-
-
-threading.Thread(target=_configure_arai_iiko_webhook_once, daemon=True).start()
 
 
 @app.post("/kiosk-crm-register")
