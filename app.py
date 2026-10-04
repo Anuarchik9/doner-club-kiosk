@@ -2160,10 +2160,18 @@ def call_centre_payment_options():
             return jsonify(error_payload), status_code
         organization_id = target["organizationId"]
         rows, payment_error = _call_centre_payment_types(organization_id)
+        remote_payment, remote_error = _resolve_call_centre_payment(
+            organization_id,
+            "REMOTE",
+            target.get("terminalGroupId"),
+        )
         options = [{
             "code": "REMOTE",
-            "name": "Удалённая оплата",
-            "available": True,
+            "name": remote_payment.get("name") if remote_payment else "CALL CENTRE BASE",
+            "available": bool(remote_payment),
+            "paymentTypeId": remote_payment.get("id") if remote_payment else None,
+            "paymentTypeKind": remote_payment.get("paymentTypeKind") if remote_payment else None,
+            "paymentProcessingType": remote_payment.get("paymentProcessingType") if remote_payment else None,
         }]
         for code, label in (("DEPOSIT", "Депозит"), ("FOOD", "Питание")):
             row = _find_internal_payment_type(rows, code, target.get("terminalGroupId")) if not payment_error else None
@@ -2177,7 +2185,7 @@ def call_centre_payment_options():
             success=True,
             point=point,
             options=options,
-            warning=payment_error,
+            warning=payment_error or remote_error,
         )
     except Exception as error:
         return jsonify(success=False, code="CALL_CENTRE_OPTIONS_ERROR", message=str(error)), 500
