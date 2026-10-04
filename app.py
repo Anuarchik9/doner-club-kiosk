@@ -1378,6 +1378,12 @@ def kiosk_paid_order():
     process_id = str(data.get("paymentProcessId") or "").strip()
     payment_status = str(data.get("paymentSubStatus") or "").strip()
     phone = str(data.get("phone") or "").strip() or None
+    discount_id = str(data.get("discountId") or "").strip()
+    discount_name = str(data.get("discountName") or "").strip()[:160]
+    try:
+        requested_discount_sum = float(data.get("discountSum") or 0)
+    except (TypeError, ValueError, OverflowError):
+        requested_discount_sum = -1
     incoming_items = data.get("items") or []
 
     if not process_id:
@@ -1427,6 +1433,55 @@ def kiosk_paid_order():
         organization_id = target["organizationId"]
         terminal_group_id = target["terminalGroupId"]
         table_id = target["tableId"]
+
+        subtotal = _call_centre_items_subtotal(order_items)
+        applied_discount = None
+        discount_sum = 0.0
+        if discount_id:
+            discount_rows, discount_error = _call_centre_discounts(organization_id)
+            if discount_error:
+                return jsonify(success=False, **discount_error), 502
+            applied_discount = next((row for row in discount_rows if row.get("id") == discount_id), None)
+            if not applied_discount:
+                return jsonify(
+                    success=False,
+                    code="DISCOUNT_NOT_FOUND",
+                    message="Selected iiko discount is no longer available.",
+                ), 409
+            if not _call_centre_discount_supported(applied_discount):
+                return jsonify(
+                    success=False,
+                    code="DISCOUNT_NOT_SUPPORTED",
+                    message="This iiko discount cannot be safely applied by CALL CENTRE.",
+                    discount=applied_discount,
+                ), 409
+            try:
+                discount_sum = _call_centre_discount_amount(applied_discount, subtotal)
+            except ValueError as error:
+                return jsonify(
+                    success=False,
+                    code=str(error),
+                    message="Selected iiko discount cannot be applied to this order.",
+                    discount=applied_discount,
+                ), 409
+            if requested_discount_sum < 0 or abs(requested_discount_sum - discount_sum) > 0.011:
+                return jsonify(
+                    success=False,
+                    code="DISCOUNT_SUM_MISMATCH",
+                    expectedDiscountSum=discount_sum,
+                    requestedDiscountSum=requested_discount_sum,
+                ), 409
+
+        expected_payment_sum = round(max(0.0, subtotal - discount_sum) + 1e-9, 2)
+        if abs(payment_sum - expected_payment_sum) > 0.011:
+            return jsonify(
+                success=False,
+                code="PAYMENT_SUM_MISMATCH",
+                subtotal=subtotal,
+                discountSum=discount_sum,
+                expectedPaymentSum=expected_payment_sum,
+                paymentSum=payment_sum,
+            ), 409
         order_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"donerclub:kiosk:{point}:{process_id}"))
         external_number = ("KIOSK-" + process_id)[-50:]
         payment_type_id = os.environ.get(
@@ -2098,6 +2153,20 @@ def call_centre_payment_options():
         return jsonify(success=False, code="CALL_CENTRE_OPTIONS_ERROR", message=str(error)), 500
 
 
+
+def _call_centre_items_subtotal(order_items):
+    total = 0.0
+    for item in order_items or []:
+        amount = float(item.get("amount") or 0)
+        price = float(item.get("price") or 0)
+        total += price * amount
+        for modifier in item.get("modifiers") or []:
+            modifier_amount = float(modifier.get("amount") or 0)
+            modifier_price = float(modifier.get("price") or 0)
+            total += modifier_price * modifier_amount * amount
+    return round(total + 1e-9, 2)
+
+
 @app.post("/call-centre-order")
 def call_centre_order():
     expected_key = str(os.environ.get("CALL_CENTRE_API_KEY") or "").strip()
@@ -2110,10 +2179,8 @@ def call_centre_order():
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         return jsonify(success=False, code="INVALID_CALL_CENTRE_ORDER", message="JSON object required."), 400
-    payment_method = str(data.get("paymentMethod") or "REMOTE").strip().upper()
-    expected_confirmation = "CLIENT_PAID" if payment_method == "REMOTE" else "INTERNAL_PAYMENT"
-    if payment_method not in {"REMOTE", "DEPOSIT", "FOOD"}:
-        return jsonify(success=False, code="INVALID_PAYMENT_METHOD"), 400
+    payment_method = "REMOTE"
+    expected_confirmation = "CLIENT_PAID"
     if data.get("confirm") != expected_confirmation:
         return jsonify(
             success=False,
@@ -2163,7 +2230,7 @@ def call_centre_order():
         external_number = ("CALL-" + request_id)[-50:]
         payment_info, payment_error = _resolve_call_centre_payment(
             organization_id,
-            payment_method,
+            "REMOTE",
             terminal_group_id,
         )
         if payment_error:
@@ -2203,10 +2270,19 @@ def call_centre_order():
             "items": order_items,
             "guests": {"count": 1, "splitBetweenPersons": False},
             "comment": (
-                f"CALL CENTRE · {operator} · {payment_info['name']}"
-                + (" · КЛИЕНТ ОПЛАТИЛ УДАЛЕННО" if payment_method == "REMOTE" else " · ВНУТРЕННИЙ ТИП ОПЛАТЫ")
+                f"CALL CENTRE · {operator} · {payment_info['name']} · КЛИЕНТ ОПЛАТИЛ УДАЛЕННО"
+                + (f" · СКИДКА: {applied_discount.get('name')}" if applied_discount else "")
             ),
         }
+        if applied_discount:
+            order_payload["discountsInfo"] = {
+                "discounts": [{
+                    "discountTypeId": applied_discount["id"],
+                    "sum": discount_sum,
+                    "type": "RMS",
+                }],
+                "fixedLoyaltyDiscounts": True,
+            }
         if payment_sum > 0:
             order_payload["payments"] = [{
                 "paymentTypeKind": payment_info.get("paymentTypeKind") or "Card",
@@ -2306,11 +2382,16 @@ def call_centre_order():
             externalNumber=external_number,
             order=final_order_body,
             payment={
-                "paymentTypeId": payment_type_id,
-                "paymentTypeKind": "Card",
+                "paymentTypeId": payment_type_id if payment_sum > 0 else None,
+                "paymentTypeKind": payment_info.get("paymentTypeKind") if payment_sum > 0 else None,
                 "sum": payment_sum,
-                "isProcessedExternally": True,
-                "isFiscalizedExternally": False,
+                "isProcessedExternally": bool(payment_info.get("isProcessedExternally", True)) if payment_sum > 0 else None,
+                "isFiscalizedExternally": False if payment_sum > 0 else None,
+            },
+            discount={
+                "id": applied_discount.get("id") if applied_discount else None,
+                "name": applied_discount.get("name") if applied_discount else None,
+                "sum": discount_sum,
             },
             servicePrintRequested=True,
             commandStatus=command_status,
