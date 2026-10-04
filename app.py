@@ -1861,12 +1861,12 @@ def _call_centre_key_authorized():
 
 def _collect_payment_type_rows(value, out):
     if isinstance(value, dict):
-        if value.get("id") and value.get("name"):
-            kind = value.get("paymentTypeKind") or value.get("kind")
+        kind = value.get("paymentTypeKind") or value.get("kind")
+        if value.get("id") and value.get("name") and kind:
             out.append({
                 "id": str(value.get("id")),
                 "name": str(value.get("name") or ""),
-                "paymentTypeKind": str(kind or "Card"),
+                "paymentTypeKind": str(kind),
                 "isDeleted": bool(value.get("isDeleted")),
             })
         for child in value.values():
