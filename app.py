@@ -1326,52 +1326,30 @@ def order_status_capabilities():
 
         organization_id = department["organizationId"]
 
-        tg_response = iiko_kiosk_post(
-            "/api/1/terminal_groups",
-            {"organizationIds": [organization_id], "includeDisabled": False},
+        tables_response = iiko_kiosk_post(
+            "/api/1/tables",
+            {"organizationIds": [organization_id]},
             timeout=30,
         )
-        if not tg_response.ok:
+        if not tables_response.ok:
             return jsonify(
                 success=False,
-                code="TERMINAL_GROUPS_FORBIDDEN",
-                statusCode=tg_response.status_code,
-                details=tg_response.text[:800],
+                code="TABLES_QUERY_FAILED",
+                statusCode=tables_response.status_code,
+                details=tables_response.text[:800],
             ), 502
-        tg_data = tg_response.json()
-        terminal_group_ids = [
-            str(item.get("id"))
-            for block in (tg_data.get("terminalGroups") or [])
-            if str(block.get("organizationId")) == str(organization_id)
-            for item in (block.get("items") or [])
-            if item.get("id")
-        ]
-
-        sections_response = iiko_kiosk_post(
-            "/api/1/reserve/available_restaurant_sections",
-            {
-                "terminalGroupIds": terminal_group_ids,
-                "returnSchema": True,
-                "revision": 0,
-            },
-            timeout=35,
-        )
-        if not sections_response.ok:
-            return jsonify(
-                success=False,
-                code="SECTIONS_QUERY_FAILED",
-                statusCode=sections_response.status_code,
-                details=sections_response.text[:800],
-            ), 502
-        sections_data = sections_response.json()
+        tables_data = tables_response.json()
         table_ids = [
             str(table.get("id"))
-            for section in (sections_data.get("restaurantSections") or [])
-            for table in (section.get("tables") or [])
+            for table in (tables_data.get("tables") or [])
             if table.get("id") and not table.get("isDeleted")
         ]
         if not table_ids:
-            return jsonify(success=False, code="NO_TABLES"), 404
+            return jsonify(
+                success=False,
+                code="NO_TABLES",
+                tablesResponseKeys=sorted(tables_data.keys()),
+            ), 404
 
         local_now = datetime.utcnow() + timedelta(hours=5)
         payload = {
