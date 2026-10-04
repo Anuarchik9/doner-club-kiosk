@@ -1614,11 +1614,13 @@ def kiosk_paid_order():
             orderId=order_id,
             externalNumber=external_number,
             payment={
-                "paymentTypeId": payment_type_id,
-                "paymentTypeKind": "Card",
+                "method": payment_method,
+                "name": payment_info.get("name"),
+                "paymentTypeId": payment_type_id if payment_sum > 0 else None,
+                "paymentTypeKind": payment_info.get("paymentTypeKind") if payment_sum > 0 else None,
                 "sum": payment_sum,
-                "isProcessedExternally": True,
-                "isFiscalizedExternally": False,
+                "isProcessedExternally": bool(payment_info.get("isProcessedExternally", True)) if payment_sum > 0 else None,
+                "isFiscalizedExternally": False if payment_sum > 0 else None,
             },
             servicePrintRequested=True,
             commandStatus=command_status,
@@ -1997,11 +1999,15 @@ def call_centre_order():
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         return jsonify(success=False, code="INVALID_CALL_CENTRE_ORDER", message="JSON object required."), 400
-    if data.get("confirm") != "CLIENT_PAID":
+    payment_method = str(data.get("paymentMethod") or "REMOTE").strip().upper()
+    expected_confirmation = "CLIENT_PAID" if payment_method == "REMOTE" else "INTERNAL_PAYMENT"
+    if payment_method not in {"REMOTE", "DEPOSIT", "FOOD"}:
+        return jsonify(success=False, code="INVALID_PAYMENT_METHOD"), 400
+    if data.get("confirm") != expected_confirmation:
         return jsonify(
             success=False,
-            code="CLIENT_PAYMENT_CONFIRMATION_REQUIRED",
-            message="Order was not sent. Operator must explicitly confirm that the client paid.",
+            code="PAYMENT_CONFIRMATION_REQUIRED",
+            message="Order confirmation does not match the selected payment method.",
         ), 400
 
     point = str(data.get("point") or "RESPUBLIKA").strip()
@@ -2017,7 +2023,7 @@ def call_centre_order():
         payment_sum = float(data.get("paymentSum"))
     except (TypeError, ValueError, OverflowError):
         payment_sum = 0
-    if isinstance(data.get("paymentSum"), bool) or not math.isfinite(payment_sum) or payment_sum <= 0 or payment_sum > 500000:
+    if isinstance(data.get("paymentSum"), bool) or not math.isfinite(payment_sum) or payment_sum < 0 or payment_sum > 500000:
         return jsonify(success=False, code="INVALID_PAYMENT_SUM"), 400
 
     try:
@@ -2044,13 +2050,10 @@ def call_centre_order():
         table_id = target["tableId"]
         order_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"donerclub:call-centre:{point}:{request_id}"))
         external_number = ("CALL-" + request_id)[-50:]
-        payment_type_id = os.environ.get(
-            "IIKO_CALL_CENTRE_PAYMENT_TYPE_ID",
-            os.environ.get(
-                "IIKO_KIOSK_PAYMENT_TYPE_ID",
-                "d89a8bf4-b3d1-4625-8de3-6b0ef162e0c3",
-            ),
-        )
+        payment_info, payment_error = _resolve_call_centre_payment(organization_id, payment_method)
+        if payment_error:
+            return jsonify(success=False, **payment_error), 409
+        payment_type_id = payment_info["id"]
 
         existing = _table_order_by_id(organization_id, order_id)
         if existing and existing.get("creationStatus") == "Success":
@@ -2084,16 +2087,20 @@ def call_centre_order():
             "tableIds": [table_id],
             "items": order_items,
             "guests": {"count": 1, "splitBetweenPersons": False},
-            "payments": [{
-                "paymentTypeKind": "Card",
+            "comment": (
+                f"CALL CENTRE · {operator} · {payment_info['name']}"
+                + (" · КЛИЕНТ ОПЛАТИЛ УДАЛЕННО" if payment_method == "REMOTE" else " · ВНУТРЕННИЙ ТИП ОПЛАТЫ")
+            ),
+        }
+        if payment_sum > 0:
+            order_payload["payments"] = [{
+                "paymentTypeKind": payment_info.get("paymentTypeKind") or "Card",
                 "sum": payment_sum,
                 "paymentTypeId": payment_type_id,
-                "isProcessedExternally": True,
+                "isProcessedExternally": bool(payment_info.get("isProcessedExternally", True)),
                 "isFiscalizedExternally": False,
                 "isPrepay": False,
-            }],
-            "comment": f"CALL CENTRE · {operator} · КЛИЕНТ ОПЛАТИЛ УДАЛЕННО",
-        }
+            }]
         if phone:
             order_payload["phone"] = phone
 
