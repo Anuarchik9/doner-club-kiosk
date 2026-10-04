@@ -2,6 +2,7 @@ import math
 import os
 import threading
 import time
+from datetime import datetime, timedelta
 
 import requests
 from flask import Flask, jsonify, request
@@ -1313,6 +1314,101 @@ def kiosk_test_paid_order():
     except Exception as error:
         return jsonify({"success": False, "code": "KIOSK_PAID_TEST_ORDER_ERROR", "message": str(error)}), 500
 
+
+
+@app.get("/internal/order-status-capabilities")
+def order_status_capabilities():
+    """Temporary, PII-free diagnostic for Republic order/kitchen statuses."""
+    try:
+        department, _ = find_department("RESPUBLIKA")
+        if not department:
+            return jsonify(success=False, code="POINT_NOT_FOUND"), 404
+
+        organization_id = department["organizationId"]
+        terminal_groups, _ = get_terminal_groups_for_organization(organization_id)
+        terminal_group_ids = [str(group["id"]) for group in terminal_groups if group.get("id")]
+        sections, _ = get_restaurant_sections_for_terminal_groups(terminal_group_ids)
+        table_ids = [
+            str(table["id"])
+            for section in sections
+            for table in (section.get("tables") or [])
+            if table.get("id")
+        ]
+        if not table_ids:
+            return jsonify(success=False, code="NO_TABLES"), 404
+
+        local_now = datetime.utcnow() + timedelta(hours=5)
+        payload = {
+            "organizationIds": [organization_id],
+            "tableIds": table_ids,
+            "statuses": ["New", "Bill", "Closed", "Deleted"],
+            "dateFrom": (local_now - timedelta(hours=12)).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            "dateTo": local_now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+        }
+        response = iiko_kiosk_post("/api/1/order/by_table", payload, timeout=30)
+        if not response.ok:
+            return jsonify(
+                success=False,
+                code="IIKO_ORDER_QUERY_FAILED",
+                statusCode=response.status_code,
+                details=response.text[:800],
+            ), 502
+
+        raw = response.json()
+        orders = raw.get("orders") or []
+        order_status_counts = {}
+        creation_status_counts = {}
+        item_status_counts = {}
+        sanitized_samples = []
+
+        def add_count(bucket, value):
+            if value is None or value == "":
+                return
+            key = str(value)
+            bucket[key] = bucket.get(key, 0) + 1
+
+        def collect_item_statuses(items, out):
+            for item in items or []:
+                if not isinstance(item, dict):
+                    continue
+                status = item.get("status")
+                if status:
+                    out.append(str(status))
+                    add_count(item_status_counts, status)
+                collect_item_statuses(item.get("modifiers") or [], out)
+                collect_item_statuses(item.get("components") or [], out)
+
+        for entry in orders:
+            if not isinstance(entry, dict):
+                continue
+            order = entry.get("order") if isinstance(entry.get("order"), dict) else entry
+            order_status = order.get("status")
+            creation_status = entry.get("creationStatus")
+            add_count(order_status_counts, order_status)
+            add_count(creation_status_counts, creation_status)
+            statuses = []
+            collect_item_statuses(order.get("items") or [], statuses)
+            if len(sanitized_samples) < 12:
+                sanitized_samples.append({
+                    "orderStatus": order_status,
+                    "creationStatus": creation_status,
+                    "itemStatuses": sorted(set(statuses)),
+                })
+
+        result = jsonify({
+            "success": True,
+            "point": "RESPUBLIKA",
+            "windowHours": 12,
+            "ordersFound": len(orders),
+            "orderStatuses": order_status_counts,
+            "creationStatuses": creation_status_counts,
+            "itemStatuses": item_status_counts,
+            "samples": sanitized_samples,
+        })
+        result.headers["Cache-Control"] = "no-store"
+        return result
+    except Exception as error:
+        return jsonify(success=False, code="DIAGNOSTIC_ERROR", message=str(error)), 500
 
 @app.post("/kiosk-crm-register")
 def kiosk_crm_register():
