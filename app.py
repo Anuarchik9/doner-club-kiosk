@@ -1849,6 +1849,229 @@ def kiosk_test_paid_order():
 
 
 
+
+@app.post("/call-centre-order")
+def call_centre_order():
+    expected_key = str(os.environ.get("CALL_CENTRE_API_KEY") or "").strip()
+    supplied_key = str(request.headers.get("X-Call-Centre-Key") or "").strip()
+    if not expected_key:
+        return jsonify(success=False, code="CALL_CENTRE_NOT_CONFIGURED"), 503
+    if not supplied_key or not hmac.compare_digest(expected_key, supplied_key):
+        return jsonify(success=False, code="CALL_CENTRE_UNAUTHORIZED"), 401
+
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(success=False, code="INVALID_CALL_CENTRE_ORDER", message="JSON object required."), 400
+    if data.get("confirm") != "CLIENT_PAID":
+        return jsonify(
+            success=False,
+            code="CLIENT_PAYMENT_CONFIRMATION_REQUIRED",
+            message="Order was not sent. Operator must explicitly confirm that the client paid.",
+        ), 400
+
+    point = str(data.get("point") or "RESPUBLIKA").strip()
+    request_id = str(data.get("requestId") or "").strip()
+    operator = str(data.get("operator") or "operator").strip()[:80]
+    phone = str(data.get("phone") or "").strip() or None
+    incoming_items = data.get("items") or []
+
+    if not request_id or len(request_id) > 120:
+        return jsonify(success=False, code="REQUEST_ID_REQUIRED"), 400
+
+    try:
+        payment_sum = float(data.get("paymentSum"))
+    except (TypeError, ValueError, OverflowError):
+        payment_sum = 0
+    if isinstance(data.get("paymentSum"), bool) or not math.isfinite(payment_sum) or payment_sum <= 0 or payment_sum > 500000:
+        return jsonify(success=False, code="INVALID_PAYMENT_SUM"), 400
+
+    try:
+        order_items = _normalize_order_items(incoming_items)
+    except ValueError as error:
+        return jsonify(success=False, code="INVALID_CALL_CENTRE_ORDER", message=str(error)), 400
+    if not order_items:
+        return jsonify(success=False, code="EMPTY_ORDER"), 400
+
+    try:
+        if not os.environ.get("IIKO_KIOSK_API_KEY"):
+            return jsonify(success=False, code="KIOSK_API_NOT_CONFIGURED"), 503
+
+        target, error_payload, status_code = _resolve_kiosk_order_target(point)
+        if error_payload:
+            return jsonify(error_payload), status_code
+
+        rejection = check_order_availability(target, order_items)
+        if rejection:
+            return jsonify(rejection), 409
+
+        organization_id = target["organizationId"]
+        terminal_group_id = target["terminalGroupId"]
+        table_id = target["tableId"]
+        order_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"donerclub:call-centre:{point}:{request_id}"))
+        external_number = ("CALL-" + request_id)[-50:]
+        payment_type_id = os.environ.get(
+            "IIKO_CALL_CENTRE_PAYMENT_TYPE_ID",
+            os.environ.get(
+                "IIKO_KIOSK_PAYMENT_TYPE_ID",
+                "d89a8bf4-b3d1-4625-8de3-6b0ef162e0c3",
+            ),
+        )
+
+        existing = _table_order_by_id(organization_id, order_id)
+        if existing and existing.get("creationStatus") == "Success":
+            existing_order = existing.get("order") or {}
+            if abs(float(existing_order.get("sum") or 0) - payment_sum) > 0.011:
+                return jsonify(
+                    success=False,
+                    code="EXISTING_ORDER_SUM_MISMATCH",
+                    message="Call-centre order already exists in iiko with another sum. Do not resend payment.",
+                    orderId=order_id,
+                ), 409
+            if str(existing_order.get("status") or "") != "Closed":
+                close_status, close_error, close_code = _close_kiosk_order(organization_id, order_id)
+                if close_error:
+                    return jsonify(close_error), close_code
+            else:
+                close_status = None
+            return jsonify(
+                success=True,
+                duplicate=True,
+                orderId=order_id,
+                externalNumber=external_number,
+                order=existing_order,
+                close={"commandStatus": close_status},
+                target=target,
+            )
+
+        order_payload = {
+            "id": order_id,
+            "externalNumber": external_number,
+            "tableIds": [table_id],
+            "items": order_items,
+            "guests": {"count": 1, "splitBetweenPersons": False},
+            "payments": [{
+                "paymentTypeKind": "Card",
+                "sum": payment_sum,
+                "paymentTypeId": payment_type_id,
+                "isProcessedExternally": True,
+                "isFiscalizedExternally": False,
+                "isPrepay": False,
+            }],
+            "comment": f"CALL CENTRE · {operator} · КЛИЕНТ ОПЛАТИЛ УДАЛЕННО",
+        }
+        if phone:
+            order_payload["phone"] = phone
+
+        payload = {
+            "organizationId": organization_id,
+            "terminalGroupId": terminal_group_id,
+            "createOrderSettings": {
+                "servicePrint": True,
+                "transportToFrontTimeout": 10,
+                "checkStopList": True,
+            },
+            "order": order_payload,
+        }
+
+        response = iiko_kiosk_post("/api/1/order/create", payload, timeout=45)
+        if not response.ok:
+            existing = _table_order_by_id(organization_id, order_id)
+            if existing and existing.get("creationStatus") == "Success":
+                existing_order = existing.get("order") or {}
+                if abs(float(existing_order.get("sum") or 0) - payment_sum) <= 0.011:
+                    close_status, close_error, close_code = _close_kiosk_order(organization_id, order_id)
+                    if close_error:
+                        return jsonify(close_error), close_code
+                    return jsonify(
+                        success=True,
+                        duplicate=True,
+                        orderId=order_id,
+                        externalNumber=external_number,
+                        order=existing_order,
+                        close={"commandStatus": close_status},
+                        target=target,
+                    )
+            return jsonify(
+                success=False,
+                code="IIKO_CALL_CENTRE_ORDER_CREATE_FAILED",
+                statusCode=response.status_code,
+                details=response.text[:3000],
+                orderId=order_id,
+            ), 502
+
+        result = response.json()
+        command_status = _wait_command(organization_id, result.get("correlationId"), attempts=10)
+        if command_status and command_status.get("state") == "Error":
+            return jsonify(
+                success=False,
+                code="IIKO_CALL_CENTRE_CREATE_COMMAND_ERROR",
+                orderId=order_id,
+                commandStatus=command_status,
+                iiko=result,
+            ), 502
+        if not command_status or command_status.get("state") != "Success":
+            return jsonify(
+                success=False,
+                code="IIKO_CALL_CENTRE_CREATE_PENDING",
+                message="Creation is not confirmed. Check iiko before retrying.",
+                orderId=order_id,
+                commandStatus=command_status,
+                iiko=result,
+            ), 202
+
+        confirmed = _table_order_by_id(organization_id, order_id) or (result.get("orderInfo") or {})
+        confirmed_order = confirmed.get("order") if isinstance(confirmed, dict) else {}
+        if not isinstance(confirmed_order, dict):
+            confirmed_order = {}
+        iiko_sum = float(confirmed_order.get("sum") or 0)
+        if abs(iiko_sum - payment_sum) > 0.011:
+            return jsonify(
+                success=False,
+                code="IIKO_SUM_MISMATCH",
+                message="Client paid, but iiko total differs. Do not charge again.",
+                paymentSum=payment_sum,
+                iikoSum=iiko_sum,
+                orderId=order_id,
+            ), 409
+
+        close_status, close_error, close_code = _close_kiosk_order(organization_id, order_id)
+        if close_error:
+            return jsonify(close_error), close_code
+
+        final_order = _table_order_by_id(organization_id, order_id)
+        final_order_body = (final_order or {}).get("order") if isinstance(final_order, dict) else confirmed_order
+        if not isinstance(final_order_body, dict):
+            final_order_body = confirmed_order
+
+        return jsonify(
+            success=True,
+            orderId=order_id,
+            externalNumber=external_number,
+            order=final_order_body,
+            payment={
+                "paymentTypeId": payment_type_id,
+                "paymentTypeKind": "Card",
+                "sum": payment_sum,
+                "isProcessedExternally": True,
+                "isFiscalizedExternally": False,
+            },
+            servicePrintRequested=True,
+            commandStatus=command_status,
+            close={"commandStatus": close_status},
+            target=target,
+        )
+    except AvailabilityUnavailable:
+        raise
+    except ConfigurationError as error:
+        return jsonify(success=False, code="KIOSK_API_NOT_CONFIGURED", message=str(error)), 503
+    except requests.Timeout:
+        return jsonify(success=False, code="IIKO_TIMEOUT", message="iiko did not answer in time. Do not resend payment."), 504
+    except Exception as error:
+        return jsonify(success=False, code="CALL_CENTRE_ORDER_ERROR", message=str(error)), 500
+
+
+
+
 REPUBLIC_ORGANIZATION_ID = "9f2c2c10-a4e8-4e80-ac1d-beedf7d5182e"
 ARAI_ORGANIZATION_ID = "58e718ee-54ec-4604-beff-a172cc016879"
 IIKO_WEBHOOK_POINTS = {
