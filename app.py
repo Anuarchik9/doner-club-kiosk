@@ -1955,21 +1955,37 @@ def _resolve_call_centre_payment(organization_id, method, terminal_group_id=None
                     "availablePaymentTypes": [x.get("name") for x in rows if x.get("name")][:80],
                 }
         else:
-            wanted = {"call centre base", "call center base"}
+            wanted = ("call centre base", "call center base")
             candidates = []
             for item in rows:
                 groups = item.get("terminalGroupIds") or []
                 if terminal_group_id and groups and str(terminal_group_id) not in groups:
                     continue
-                if _payment_name_key(item.get("name")) in wanted:
+                key = _payment_name_key(item.get("name"))
+                if any(name == key or name in key for name in wanted):
                     candidates.append(item)
             row = candidates[0] if candidates else None
 
         if not row:
+            diagnostics = [
+                {
+                    "id": x.get("id"),
+                    "name": x.get("name"),
+                    "paymentTypeKind": x.get("paymentTypeKind"),
+                    "paymentProcessingType": x.get("paymentProcessingType"),
+                    "terminalGroupIds": x.get("terminalGroupIds") or [],
+                }
+                for x in rows if x.get("name")
+            ][:100]
+            print("CALL_CENTRE_BASE_NOT_FOUND", json.dumps({
+                "organizationId": organization_id,
+                "terminalGroupId": terminal_group_id,
+                "paymentTypes": diagnostics,
+            }, ensure_ascii=False), flush=True)
             return None, {
                 "code": "CALL_CENTRE_BASE_PAYMENT_TYPE_NOT_FOUND",
                 "message": "Тип оплаты «CALL CENTRE BASE» не найден в iiko для этой точки.",
-                "availablePaymentTypes": [x.get("name") for x in rows if x.get("name")][:80],
+                "availablePaymentTypes": diagnostics,
             }
 
         if _is_technical_payment(row):
