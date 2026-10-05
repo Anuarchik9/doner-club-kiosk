@@ -1282,7 +1282,7 @@ def _record_kiosk_order_in_crm(data, *, order_id, order_number, payment_sum):
         "discountPercent": round(discount_percent, 2),
         "total": round(float(payment_sum), 2),
         "paymentMethod": "KASPI_SMART_POS",
-        "status": "COMPLETED",
+        "status": "CREATED",
         "phone": phone or "",
         "discountReason": "Скидка 5% на первый заказ в киоске" if discount_amount > 0 else "",
     }
@@ -2742,6 +2742,53 @@ IIKO_ITEM_STATUSES = {
     "Served",
 }
 
+GUEST_STAGE_CRM_STATUS = {
+    "accepted": "ACCEPTED",
+    "cooking": "COOKING",
+    "ready": "READY",
+    "served": "COMPLETED",
+}
+IIKO_ORDER_CRM_STATUS = {
+    "OnWay": "DELIVERING",
+    "Delivered": "COMPLETED",
+    "Cancelled": "CANCELLED",
+    "Canceled": "CANCELLED",
+}
+
+
+def _crm_status_from_iiko(order, guest_stage):
+    order_status = str((order or {}).get("status") or "").strip()
+    if order_status in {"Cancelled", "Canceled"}:
+        return "CANCELLED"
+    if order_status == "OnWay":
+        return "DELIVERING"
+    if order_status == "Delivered":
+        return "COMPLETED"
+    return GUEST_STAGE_CRM_STATUS.get(guest_stage)
+
+
+def _push_crm_order_status(order_id, status):
+    if not CRM_BASE_URL or not CRM_API_KEY or not order_id or not status:
+        return {"ok": False, "skipped": True, "reason": "CRM_NOT_CONFIGURED"}
+    try:
+        response = requests.post(
+            f"{CRM_BASE_URL}/api/v1/orders/status",
+            json={"iikoOrderId": str(order_id), "status": str(status)},
+            headers={"X-API-Key": CRM_API_KEY, "Content-Type": "application/json"},
+            timeout=(2, 5),
+        )
+        try:
+            body = response.json()
+        except ValueError:
+            body = {"raw": response.text[:300]}
+        return {
+            "ok": bool(response.ok and isinstance(body, dict) and body.get("ok")),
+            "statusCode": response.status_code,
+            "response": body,
+        }
+    except requests.RequestException as error:
+        return {"ok": False, "reason": "CRM_UNAVAILABLE", "message": str(error)}
+
 
 def _iiko_webhook_authorized():
     expected = str(os.environ.get("IIKO_WEBHOOK_AUTH_TOKEN") or "").strip()
@@ -2835,6 +2882,11 @@ def iiko_webhook():
         order = event_info.get("order") if isinstance(event_info.get("order"), dict) else {}
         guest_stage, item_statuses = _guest_kitchen_stage(order)
 
+        crm_status = _crm_status_from_iiko(order, guest_stage)
+        crm_sync = None
+        if event_type == "TableOrderUpdate" and event_info.get("id") and crm_status:
+            crm_sync = _push_crm_order_status(event_info.get("id"), crm_status)
+
         diagnostic = {
             "eventType": event_type,
             "point": point_code,
@@ -2846,6 +2898,8 @@ def iiko_webhook():
             "orderStatus": order.get("status"),
             "itemStatuses": item_statuses,
             "guestStage": guest_stage,
+            "crmStatus": crm_status,
+            "crmSync": crm_sync,
         }
         print(
             "IIKO_WEBHOOK_EVENT " + json.dumps(diagnostic, ensure_ascii=False, separators=(",", ":")),
