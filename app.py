@@ -2072,6 +2072,106 @@ def call_centre_discounts():
         return jsonify(success=False, code="CALL_CENTRE_DISCOUNTS_ERROR", message=str(error)), 500
 
 
+def _normalize_loyalty_phone(value):
+    digits = re.sub(r"\D+", "", str(value or ""))
+    if len(digits) == 11 and digits[0] in {"7", "8"}:
+        digits = "7" + digits[1:]
+    elif len(digits) == 10:
+        digits = "7" + digits
+    if len(digits) != 11 or not digits.startswith("7"):
+        return ""
+    return "+" + digits
+
+
+def _normalize_loyalty_wallets(payload):
+    rows = []
+    for item in (payload.get("walletBalances") or []):
+        if not isinstance(item, dict):
+            continue
+        wallet = item.get("wallet") if isinstance(item.get("wallet"), dict) else item
+        try:
+            balance = float(item.get("balance") if item.get("balance") is not None else wallet.get("balance") or 0)
+        except (TypeError, ValueError, OverflowError):
+            balance = 0.0
+        rows.append({
+            "id": str(wallet.get("id") or item.get("id") or ""),
+            "name": str(wallet.get("name") or item.get("name") or ""),
+            "type": wallet.get("type") if wallet.get("type") is not None else item.get("type"),
+            "programType": wallet.get("programType") if wallet.get("programType") is not None else item.get("programType"),
+            "balance": round(balance + 1e-9, 2),
+        })
+    return rows
+
+
+@app.get("/call-centre-loyalty-customer")
+def call_centre_loyalty_customer():
+    if not _call_centre_key_authorized():
+        return jsonify(success=False, code="CALL_CENTRE_UNAUTHORIZED"), 401
+
+    point = str(request.args.get("point") or "RESPUBLIKA").strip()
+    phone = _normalize_loyalty_phone(request.args.get("phone"))
+    if not phone:
+        return jsonify(success=False, code="INVALID_PHONE", message="Введите полный номер телефона сотрудника."), 400
+
+    try:
+        department, _ = find_department(point)
+        if not department:
+            return jsonify(success=False, code="POINT_NOT_FOUND"), 404
+
+        response = iiko_kiosk_post(
+            "/api/1/loyalty/iiko/customer/info",
+            {
+                "type": "phone",
+                "phone": phone,
+                "organizationId": department["organizationId"],
+            },
+            timeout=30,
+        )
+        if not response.ok:
+            details = response.text[:1200]
+            status = 404 if response.status_code in (400, 404) else 502
+            return jsonify(
+                success=False,
+                code="LOYALTY_CUSTOMER_NOT_FOUND" if status == 404 else "IIKO_LOYALTY_LOOKUP_FAILED",
+                message="Сотрудник не найден в iikoCard." if status == 404 else "Не удалось получить данные iikoCard.",
+                statusCode=response.status_code,
+                details=details,
+            ), status
+
+        data = response.json()
+        categories = []
+        for item in (data.get("categories") or []):
+            if isinstance(item, dict):
+                name = str(item.get("name") or "").strip()
+            else:
+                name = str(item or "").strip()
+            if name:
+                categories.append(name)
+
+        wallets = _normalize_loyalty_wallets(data)
+        nutrition_wallets = [
+            row for row in wallets
+            if row.get("type") == 0 or "пит" in str(row.get("name") or "").casefold()
+        ]
+
+        return jsonify(
+            success=True,
+            point=point,
+            employee={
+                "id": str(data.get("id") or ""),
+                "phone": str(data.get("phone") or phone),
+                "name": str(data.get("name") or ""),
+                "surname": str(data.get("surname") or data.get("surName") or ""),
+                "middleName": str(data.get("middleName") or ""),
+                "categories": categories,
+                "wallets": wallets,
+                "nutritionWallets": nutrition_wallets,
+            },
+        )
+    except Exception as error:
+        return jsonify(success=False, code="LOYALTY_LOOKUP_ERROR", message=str(error)), 500
+
+
 @app.get("/call-centre-payment-options")
 def call_centre_payment_options():
     if not _call_centre_key_authorized():
