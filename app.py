@@ -2151,7 +2151,7 @@ def call_centre_loyalty_customer():
         wallets = _normalize_loyalty_wallets(data)
         nutrition_wallets = [
             row for row in wallets
-            if row.get("type") == 0 or "пит" in str(row.get("name") or "").casefold()
+            if "пит" in str(row.get("name") or "").casefold()
         ]
 
         return jsonify(
