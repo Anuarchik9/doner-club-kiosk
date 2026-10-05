@@ -1872,8 +1872,27 @@ def _resolve_kiosk_payment(organization_id, terminal_group_id, point):
     payment_id = str(os.environ.get(f"IIKO_KIOSK_{prefix}_PAYMENT_TYPE_ID")
                      or os.environ.get("IIKO_KIOSK_PAYMENT_TYPE_ID") or "").strip()
     if not payment_id:
-        return None, {"code": "KIOSK_PAYMENT_MAPPING_REQUIRED",
-                      "message": "Настройте существующий тип оплаты iiko для полученной оплаты. Тестовый тип Kiosk не используется."}
+        rows, error = _call_centre_payment_types(organization_id)
+        if error:
+            return None, error
+        candidates = [
+            {
+                "id": row.get("id"),
+                "name": row.get("name"),
+                "paymentTypeKind": row.get("paymentTypeKind"),
+                "paymentProcessingType": row.get("paymentProcessingType"),
+                "terminalGroupIds": row.get("terminalGroupIds") or [],
+            }
+            for row in rows
+            if row.get("paymentTypeKind") == "Card"
+            and not _is_technical_payment(row)
+            and (not row.get("terminalGroupIds") or terminal_group_id in row.get("terminalGroupIds"))
+        ]
+        return None, {
+            "code": "KIOSK_PAYMENT_MAPPING_REQUIRED",
+            "message": "Настройте существующий тип оплаты iiko для полученной оплаты. Тестовый тип Kiosk не используется.",
+            "availablePaymentTypes": candidates,
+        }
     rows, error = _call_centre_payment_types(organization_id)
     if error:
         return None, error
