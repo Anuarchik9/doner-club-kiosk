@@ -1897,11 +1897,26 @@ def _resolve_kiosk_payment(organization_id, terminal_group_id, point):
     if error:
         return None, error
     row = next((r for r in rows if r["id"] == payment_id), None)
-    if (not row or row.get("paymentTypeKind") != "Card"
-            or _is_technical_payment(row)
-            or (row.get("terminalGroupIds") and terminal_group_id not in row["terminalGroupIds"])):
-        return None, {"code": "KIOSK_PAYMENT_MAPPING_INVALID",
-                      "message": "Нужен действующий тип безналичной оплаты этой точки; технические Kiosk/Analytics запрещены."}
+    invalid = (
+        not row
+        or row.get("paymentTypeKind") != "Card"
+        or _is_technical_payment(row)
+        or (row.get("terminalGroupIds") and terminal_group_id not in row["terminalGroupIds"])
+    )
+    if invalid:
+        return None, {
+            "code": "KIOSK_PAYMENT_MAPPING_INVALID",
+            "message": "Нужен действующий тип безналичной оплаты этой точки; технические Kiosk/Analytics запрещены.",
+            "configuredPaymentTypeId": payment_id,
+            "selectedTerminalGroupId": terminal_group_id,
+            "matchedPaymentType": {
+                "id": row.get("id"),
+                "name": row.get("name"),
+                "paymentTypeKind": row.get("paymentTypeKind"),
+                "paymentProcessingType": row.get("paymentProcessingType"),
+                "terminalGroupIds": row.get("terminalGroupIds") or [],
+            } if row else None,
+        }
     return dict(row, isProcessedExternally=True), None
 
 
