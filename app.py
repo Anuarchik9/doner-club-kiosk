@@ -532,7 +532,7 @@ def normalize_external_menu(menu_data, organization_id):
 
 
 def get_terminal_groups_for_organization(organization_id):
-    response = iiko_post(
+    response = iiko_kiosk_post(
         "/api/1/terminal_groups",
         {
             "organizationIds": [organization_id],
@@ -563,7 +563,7 @@ def get_terminal_groups_alive(organization_id, terminal_group_ids):
     if not terminal_group_ids:
         return {}
 
-    response = iiko_post(
+    response = iiko_kiosk_post(
         "/api/1/terminal_groups/is_alive",
         {
             "organizationIds": [organization_id],

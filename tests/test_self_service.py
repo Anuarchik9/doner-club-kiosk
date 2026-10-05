@@ -6,6 +6,20 @@ import app as kiosk
 
 
 class SelfServiceTests(unittest.TestCase):
+    def test_terminal_discovery_uses_order_integration_credentials(self):
+        groups_response = Mock(json=lambda: {'terminalGroups': [
+            {'organizationId': 'org', 'items': [{'id': 'terminal'}]}]})
+        alive_response = Mock(json=lambda: {'isAliveStatus': [
+            {'terminalGroupId': 'terminal', 'isAlive': True}]})
+        with patch.object(kiosk, 'iiko_post') as reader, \
+             patch.object(kiosk, 'iiko_kiosk_post', side_effect=[groups_response, alive_response]) as order_api:
+            groups, _ = kiosk.get_terminal_groups_for_organization('org')
+            self.assertEqual(groups[0]['id'], 'terminal')
+            self.assertEqual(kiosk.get_terminal_groups_alive('org', ['terminal']), {'terminal': True})
+            self.assertEqual([call.args[0] for call in order_api.call_args_list],
+                             ['/api/1/terminal_groups', '/api/1/terminal_groups/is_alive'])
+            reader.assert_not_called()
+
     def setUp(self):
         self.client = kiosk.app.test_client()
         self.target = {'organizationId': 'org', 'terminalGroupId': 'terminal', 'department': {}}
