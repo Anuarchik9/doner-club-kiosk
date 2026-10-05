@@ -1972,6 +1972,20 @@ def _resolve_call_centre_payment(organization_id, method, terminal_group_id=None
 
 
 
+CALL_CENTRE_BASE_HIDDEN_DISCOUNTS = {
+    "скидка для сотрудников 10%",
+    "скидка на все комбо 10% глово",
+    "скидка на все комбо 5% яндекс+вольт",
+    "скидка на комбо батон ассорти 10 % яндекс+вольт",
+    "скидка на сумму",
+}
+
+
+def _call_centre_base_discount_visible(name):
+    key = re.sub(r"\s+", " ", str(name or "").strip()).casefold()
+    return key not in CALL_CENTRE_BASE_HIDDEN_DISCOUNTS
+
+
 def _call_centre_discounts(organization_id):
     response = iiko_kiosk_post(
         "/api/1/discounts",
@@ -2011,7 +2025,7 @@ def _call_centre_discounts(organization_id):
                 "canApplyByCardNumber": bool(item.get("canApplyByCardNumber")),
                 "productCategoryDiscounts": item.get("productCategoryDiscounts") or [],
             }
-            if row["id"] and row["name"]:
+            if row["id"] and row["name"] and _call_centre_base_discount_visible(row["name"]):
                 rows.append(row)
     return rows, None
 
