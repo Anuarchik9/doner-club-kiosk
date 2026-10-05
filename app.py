@@ -1974,7 +1974,7 @@ def _resolve_call_centre_payment(organization_id, method, terminal_group_id=None
 
 CALL_CENTRE_BASE_HIDDEN_DISCOUNTS = {
     "doner club 5% отзыв",
-    "скидка для сотрудников 10%",
+    "кнопка 100% акция",
     "скидка на все комбо 10% глово",
     "скидка на все комбо 5% яндекс+вольт",
     "скидка на комбо батон ассорти 10 % яндекс+вольт",
