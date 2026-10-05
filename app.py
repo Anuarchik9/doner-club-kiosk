@@ -1576,9 +1576,10 @@ def kiosk_paid_order():
                 "method": "KASPI_SMART_POS",
                 "name": payment_info.get("name"),
                 "paymentTypeId": payment_type_id if payment_sum > 0 else None,
-                "paymentTypeKind": payment_info.get("paymentTypeKind") if payment_sum > 0 else None,
+                "paymentTypeKind": ("LoyaltyCard" if is_loyalty_payment else payment_info.get("paymentTypeKind")) if payment_sum > 0 else None,
+                "paymentMethod": payment_method,
                 "sum": payment_sum,
-                "isProcessedExternally": bool(payment_info.get("isProcessedExternally", True)) if payment_sum > 0 else None,
+                "isProcessedExternally": (False if is_loyalty_payment else bool(payment_info.get("isProcessedExternally", True))) if payment_sum > 0 else None,
                 "isFiscalizedExternally": False if payment_sum > 0 else None,
             },
             servicePrintRequested=True,
@@ -1820,8 +1821,15 @@ def _collect_payment_type_rows(value, out):
             out.append({
                 "id": str(value.get("id")),
                 "name": str(value.get("name") or ""),
+                "code": str(value.get("code") or ""),
                 "paymentTypeKind": str(kind),
                 "paymentProcessingType": str(value.get("paymentProcessingType") or ""),
+                "applicableMarketingCampaigns": [
+                    str(item)
+                    for item in (value.get("applicableMarketingCampaigns") or [])
+                    if item
+                ],
+                "printCheque": bool(value.get("printCheque")),
                 "terminalGroupIds": [
                     str(group.get("id"))
                     for group in (value.get("terminalGroups") or [])
@@ -1923,8 +1931,20 @@ def _resolve_kiosk_payment(organization_id, terminal_group_id, point):
 def _find_internal_payment_type(rows, method, terminal_group_id=None):
     method = str(method or "").strip().upper()
     aliases = {
-        "DEPOSIT": ("депозит", "deposit"),
-        "FOOD": ("питание", "staff food", "stafffood", "еда персонала", "питание персонала", "стафф"),
+        "DEPOSIT": (
+            "питание депозит",
+            "депозит",
+            "deposit",
+            "корпоративное питание",
+        ),
+        "FOOD": (
+            "питание персонала",
+            "питание",
+            "staff food",
+            "stafffood",
+            "еда персонала",
+            "стафф",
+        ),
     }
     candidates = aliases.get(method, ())
     for row in rows:
@@ -2015,8 +2035,11 @@ def _resolve_call_centre_payment(organization_id, method, terminal_group_id=None
         "method": method,
         "id": row["id"],
         "name": row["name"],
-        "paymentTypeKind": row.get("paymentTypeKind") or "Card",
+        "code": row.get("code") or "",
+        "paymentTypeKind": row.get("paymentTypeKind") or "IikoCard",
         "paymentProcessingType": row.get("paymentProcessingType") or "",
+        "applicableMarketingCampaigns": row.get("applicableMarketingCampaigns") or [],
+        "printCheque": bool(row.get("printCheque")),
         "isProcessedExternally": str(row.get("paymentProcessingType") or "").casefold() == "external",
     }, None
 
@@ -2332,6 +2355,9 @@ def call_centre_payment_options():
                 "name": row.get("name") if row else label,
                 "available": bool(row),
                 "paymentTypeId": row.get("id") if row else None,
+                "paymentTypeKind": row.get("paymentTypeKind") if row else None,
+                "paymentProcessingType": row.get("paymentProcessingType") if row else None,
+                "applicableMarketingCampaigns": row.get("applicableMarketingCampaigns") if row else [],
             })
         return jsonify(
             success=True,
@@ -2369,8 +2395,19 @@ def call_centre_order():
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         return jsonify(success=False, code="INVALID_CALL_CENTRE_ORDER", message="JSON object required."), 400
-    payment_method = "REMOTE"
-    expected_confirmation = "CLIENT_PAID"
+    payment_method = str(data.get("paymentMethod") or "REMOTE").strip().upper()
+    confirmations = {
+        "REMOTE": "CLIENT_PAID",
+        "DEPOSIT": "STAFF_NUTRITION",
+        "FOOD": "STAFF_NUTRITION",
+    }
+    expected_confirmation = confirmations.get(payment_method)
+    if not expected_confirmation:
+        return jsonify(
+            success=False,
+            code="PAYMENT_METHOD_NOT_SUPPORTED",
+            message="Unsupported CALL CENTRE payment method.",
+        ), 400
     if data.get("confirm") != expected_confirmation:
         return jsonify(
             success=False,
@@ -2473,12 +2510,32 @@ def call_centre_order():
         external_number = request_id[-50:]
         payment_info, payment_error = _resolve_call_centre_payment(
             organization_id,
-            "REMOTE",
+            payment_method,
             terminal_group_id,
         )
         if payment_error:
             return jsonify(success=False, **payment_error), 409
         payment_type_id = payment_info["id"]
+
+        is_loyalty_payment = payment_method in {"DEPOSIT", "FOOD"}
+        if is_loyalty_payment:
+            loyalty_phone = _normalize_loyalty_phone(phone)
+            if not loyalty_phone:
+                return jsonify(
+                    success=False,
+                    code="STAFF_PHONE_REQUIRED",
+                    message="Для списания ПИТАНИЯ нужен полный номер телефона сотрудника.",
+                ), 400
+            kind_key = str(payment_info.get("paymentTypeKind") or "").casefold()
+            if kind_key not in {"iikocard", "loyaltycard"}:
+                return jsonify(
+                    success=False,
+                    code="STAFF_PAYMENT_TYPE_INVALID",
+                    message="Тип оплаты сотрудника должен быть iikoCard/LoyaltyCard.",
+                    paymentType=payment_info,
+                ), 409
+        else:
+            loyalty_phone = None
 
         existing = _table_order_by_id(organization_id, order_id)
         if existing and existing.get("creationStatus") == "Success":
@@ -2523,14 +2580,27 @@ def call_centre_order():
                 "fixedLoyaltyDiscounts": True,
             }
         if payment_sum > 0:
-            order_payload["payments"] = [{
-                "paymentTypeKind": payment_info.get("paymentTypeKind") or "Card",
-                "sum": payment_sum,
-                "paymentTypeId": payment_type_id,
-                "isProcessedExternally": bool(payment_info.get("isProcessedExternally", True)),
-                "isFiscalizedExternally": False,
-                "isPrepay": False,
-            }]
+            if is_loyalty_payment:
+                order_payload["payments"] = [{
+                    "paymentTypeKind": "LoyaltyCard",
+                    "sum": payment_sum,
+                    "paymentTypeId": payment_type_id,
+                    "isProcessedExternally": False,
+                    "isFiscalizedExternally": False,
+                    "paymentAdditionalData": {
+                        "credential": loyalty_phone,
+                        "searchScope": "Phone",
+                    },
+                }]
+            else:
+                order_payload["payments"] = [{
+                    "paymentTypeKind": payment_info.get("paymentTypeKind") or "Card",
+                    "sum": payment_sum,
+                    "paymentTypeId": payment_type_id,
+                    "isProcessedExternally": bool(payment_info.get("isProcessedExternally", True)),
+                    "isFiscalizedExternally": False,
+                    "isPrepay": False,
+                }]
         if phone:
             order_payload["phone"] = phone
 
