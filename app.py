@@ -1872,17 +1872,28 @@ def _payment_name_key(value):
 
 
 def _is_technical_payment(row):
-    return bool(set(_payment_name_key(row.get("name")).split()) & {"kiosk", "analytics"})
+    key = _payment_name_key(row.get("name"))
+    return key in {"kiosk", "analytics"}
 
 
 def _resolve_kiosk_payment(organization_id, terminal_group_id, point):
     prefix = _kiosk_point_env_prefix(point)
     payment_id = str(os.environ.get(f"IIKO_KIOSK_{prefix}_PAYMENT_TYPE_ID")
                      or os.environ.get("IIKO_KIOSK_PAYMENT_TYPE_ID") or "").strip()
-    if not payment_id:
-        rows, error = _call_centre_payment_types(organization_id)
-        if error:
-            return None, error
+    rows, error = _call_centre_payment_types(organization_id)
+    if error:
+        return None, error
+
+    kiosk_base = next((
+        r for r in rows
+        if _payment_name_key(r.get("name")) == "kiosk base"
+        and r.get("paymentTypeKind") == "Card"
+        and (not r.get("terminalGroupIds") or terminal_group_id in r.get("terminalGroupIds"))
+    ), None)
+    if kiosk_base:
+        row = kiosk_base
+        payment_id = str(kiosk_base.get("id") or "")
+    elif not payment_id:
         candidates = [
             {
                 "id": row.get("id"),
@@ -1901,10 +1912,8 @@ def _resolve_kiosk_payment(organization_id, terminal_group_id, point):
             "message": "Настройте существующий тип оплаты iiko для полученной оплаты. Тестовый тип Kiosk не используется.",
             "availablePaymentTypes": candidates,
         }
-    rows, error = _call_centre_payment_types(organization_id)
-    if error:
-        return None, error
-    row = next((r for r in rows if r["id"] == payment_id), None)
+    else:
+        row = next((r for r in rows if r["id"] == payment_id), None)
     invalid = (
         not row
         or row.get("paymentTypeKind") != "Card"
