@@ -1981,9 +1981,20 @@ CALL_CENTRE_BASE_HIDDEN_DISCOUNTS = {
 }
 
 
+def _discount_name_key(value):
+    # iiko names are not always formatted consistently (for example
+    # "Яндекс+ Вольт" vs "Яндекс+Вольт"). Ignore spaces/punctuation/case
+    # when comparing the CALL CENTRE BASE compatibility exclusions.
+    return re.sub(r"[\W_]+", "", str(value or "").casefold(), flags=re.UNICODE)
+
+
+_CALL_CENTRE_BASE_HIDDEN_KEYS = {
+    _discount_name_key(name) for name in CALL_CENTRE_BASE_HIDDEN_DISCOUNTS
+}
+
+
 def _call_centre_base_discount_visible(name):
-    key = re.sub(r"\s+", " ", str(name or "").strip()).casefold()
-    return key not in CALL_CENTRE_BASE_HIDDEN_DISCOUNTS
+    return _discount_name_key(name) not in _CALL_CENTRE_BASE_HIDDEN_KEYS
 
 
 def _call_centre_discounts(organization_id):
