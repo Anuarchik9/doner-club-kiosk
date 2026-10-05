@@ -428,6 +428,7 @@ def _normalize_modifier_item(item, organization_id):
     return {
         "id": item.get("itemId"),
         "sku": item.get("sku"),
+        "productCategoryId": item.get("productCategoryId"),
         "name": item.get("name"),
         "price": _menu_price(prices, organization_id) or 0,
         "imageUrl": image_url,
@@ -507,6 +508,7 @@ def normalize_external_menu(menu_data, organization_id):
                     "sizeId": size.get("sizeId"),
                     "sku": item.get("sku"),
                     "categoryId": category_id,
+                    "productCategoryId": item.get("productCategoryId"),
                     "name": display_name,
                     "description": item.get("description") or "",
                     "price": price,
@@ -2015,9 +2017,16 @@ def _call_centre_discounts(organization_id):
 
 
 def _call_centre_discount_supported(row):
-    if not row or row.get("isCategorisedDiscount"):
+    if not row:
         return False
     mode = str(row.get("mode") or "")
+    if row.get("isCategorisedDiscount"):
+        category_rows = row.get("productCategoryDiscounts") or []
+        return (
+            bool(row.get("isManual"))
+            and mode == "Percent"
+            and any(float(item.get("percent") or 0) > 0 for item in category_rows if isinstance(item, dict))
+        )
     if mode == "Percent":
         return float(row.get("percent") or 0) > 0
     if mode in {"FixedSum", "FlexibleSum"}:
@@ -2025,7 +2034,49 @@ def _call_centre_discount_supported(row):
     return False
 
 
-def _call_centre_discount_amount(row, subtotal):
+def _call_centre_category_discount_amount(row, incoming_items):
+    category_percent = {}
+    for item in row.get("productCategoryDiscounts") or []:
+        if not isinstance(item, dict):
+            continue
+        category_id = str(item.get("categoryId") or "").strip().casefold()
+        if category_id:
+            category_percent[category_id] = max(0.0, float(item.get("percent") or 0))
+
+    amount = 0.0
+    for item in incoming_items or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            item_amount = float(item.get("amount") or 0)
+            item_price = float(item.get("price") or 0)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        category_id = str(item.get("productCategoryId") or "").strip().casefold()
+        percent = category_percent.get(category_id, 0.0)
+        amount += max(0.0, item_price) * max(0.0, item_amount) * percent / 100.0
+
+        for modifier in item.get("modifiers") or []:
+            if not isinstance(modifier, dict):
+                continue
+            try:
+                modifier_amount = float(modifier.get("amount") or 0)
+                modifier_price = float(modifier.get("price") or 0)
+            except (TypeError, ValueError, OverflowError):
+                continue
+            modifier_category_id = str(modifier.get("productCategoryId") or "").strip().casefold()
+            modifier_percent = category_percent.get(modifier_category_id, 0.0)
+            amount += (
+                max(0.0, modifier_price)
+                * max(0.0, modifier_amount)
+                * max(0.0, item_amount)
+                * modifier_percent
+                / 100.0
+            )
+    return round(amount + 1e-9, 2)
+
+
+def _call_centre_discount_amount(row, subtotal, incoming_items=None):
     subtotal = max(0.0, float(subtotal or 0))
     if not row:
         return 0.0
@@ -2033,8 +2084,10 @@ def _call_centre_discount_amount(row, subtotal):
         raise ValueError("ORDER_BELOW_DISCOUNT_MINIMUM")
     mode = str(row.get("mode") or "")
     if row.get("isCategorisedDiscount"):
-        raise ValueError("CATEGORISED_DISCOUNT_NOT_SUPPORTED")
-    if mode == "Percent":
+        if mode != "Percent":
+            raise ValueError("DISCOUNT_MODE_NOT_SUPPORTED")
+        amount = _call_centre_category_discount_amount(row, incoming_items or [])
+    elif mode == "Percent":
         amount = subtotal * max(0.0, float(row.get("percent") or 0)) / 100.0
     elif mode in {"FixedSum", "FlexibleSum"}:
         amount = max(0.0, float(row.get("sum") or 0))
@@ -2314,7 +2367,7 @@ def call_centre_order():
                     discount=applied_discount,
                 ), 409
             try:
-                discount_sum = _call_centre_discount_amount(applied_discount, subtotal)
+                discount_sum = _call_centre_discount_amount(applied_discount, subtotal, incoming_items)
             except ValueError as error:
                 return jsonify(
                     success=False,
