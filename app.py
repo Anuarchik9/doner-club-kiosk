@@ -2843,34 +2843,75 @@ print(
     flush=True,
 )
 
-# Verify that iikoCloud is configured to call this service and that its
-# configured Authorization token matches our receiver, without logging secrets.
-try:
-    _webhook_settings_response = iiko_kiosk_post(
-        "/api/1/webhooks/settings",
-        {"organizationId": REPUBLIC_ORGANIZATION_ID},
-        timeout=30,
-    )
-    _webhook_settings = _webhook_settings_response.json() if _webhook_settings_response.ok else {}
-    _expected_webhook_token = str(os.environ.get("IIKO_WEBHOOK_AUTH_TOKEN") or "").strip()
-    _configured_webhook_token = str((_webhook_settings or {}).get("authToken") or "").strip()
-    print(
-        "IIKO_WEBHOOK_CONFIG_CHECK "
-        + json.dumps({
-            "statusCode": _webhook_settings_response.status_code,
-            "webHooksUri": (_webhook_settings or {}).get("webHooksUri"),
-            "authTokenMatches": bool(
-                _expected_webhook_token
-                and _configured_webhook_token
-                and hmac.compare_digest(_expected_webhook_token, _configured_webhook_token)
-            ),
-            "authTokenReturned": bool(_configured_webhook_token),
-            "tableOrderFilter": ((_webhook_settings or {}).get("webHooksFilter") or {}).get("tableOrderFilter"),
-        }, ensure_ascii=False, default=str)[:10000],
-        flush=True,
-    )
-except Exception as _webhook_check_error:
-    print(f"IIKO_WEBHOOK_CONFIG_CHECK_ERROR {_webhook_check_error!r}", flush=True)
+# Keep iikoCloud pointed at Render's direct service URL. This avoids a custom
+# domain / proxy layer swallowing KDS webhook POSTs before Flask sees them.
+# Preserve iiko's current token and filters verbatim.
+IIKO_WEBHOOK_DIRECT_URI = "https://doner-club-kiosk.onrender.com/iiko/webhook"
+for _webhook_org_id in (REPUBLIC_ORGANIZATION_ID, ARAI_ORGANIZATION_ID):
+    try:
+        _webhook_settings_response = iiko_kiosk_post(
+            "/api/1/webhooks/settings",
+            {"organizationId": _webhook_org_id},
+            timeout=30,
+        )
+        _webhook_settings = _webhook_settings_response.json() if _webhook_settings_response.ok else {}
+        _expected_webhook_token = str(os.environ.get("IIKO_WEBHOOK_AUTH_TOKEN") or "").strip()
+        _configured_webhook_token = str((_webhook_settings or {}).get("authToken") or "").strip()
+        _current_uri = str((_webhook_settings or {}).get("webHooksUri") or "").strip()
+
+        _updated = False
+        _update_status = None
+        _update_error = None
+        if (
+            _webhook_settings_response.ok
+            and _configured_webhook_token
+            and isinstance((_webhook_settings or {}).get("webHooksFilter"), dict)
+            and _current_uri != IIKO_WEBHOOK_DIRECT_URI
+        ):
+            _update_response = iiko_kiosk_post(
+                "/api/1/webhooks/update_settings",
+                {
+                    "organizationId": _webhook_org_id,
+                    "webHooksUri": IIKO_WEBHOOK_DIRECT_URI,
+                    "authToken": _configured_webhook_token,
+                    "webHooksFilter": _webhook_settings.get("webHooksFilter"),
+                },
+                timeout=30,
+            )
+            _update_status = _update_response.status_code
+            _updated = bool(_update_response.ok)
+            if not _update_response.ok:
+                _update_error = _update_response.text[:1200]
+
+        print(
+            "IIKO_WEBHOOK_CONFIG_CHECK "
+            + json.dumps({
+                "organizationId": _webhook_org_id,
+                "statusCode": _webhook_settings_response.status_code,
+                "webHooksUriBefore": _current_uri,
+                "webHooksUriTarget": IIKO_WEBHOOK_DIRECT_URI,
+                "updated": _updated,
+                "updateStatusCode": _update_status,
+                "updateError": _update_error,
+                "authTokenMatches": bool(
+                    _expected_webhook_token
+                    and _configured_webhook_token
+                    and hmac.compare_digest(_expected_webhook_token, _configured_webhook_token)
+                ),
+                "authTokenReturned": bool(_configured_webhook_token),
+                "tableOrderFilter": ((_webhook_settings or {}).get("webHooksFilter") or {}).get("tableOrderFilter"),
+            }, ensure_ascii=False, default=str)[:12000],
+            flush=True,
+        )
+    except Exception as _webhook_check_error:
+        print(
+            "IIKO_WEBHOOK_CONFIG_CHECK_ERROR "
+            + json.dumps({
+                "organizationId": _webhook_org_id,
+                "error": repr(_webhook_check_error),
+            }, ensure_ascii=False),
+            flush=True,
+        )
 
 
 @app.route("/iiko/webhook", methods=["GET", "POST"])
