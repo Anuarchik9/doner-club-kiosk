@@ -2843,6 +2843,35 @@ print(
     flush=True,
 )
 
+# Verify that iikoCloud is configured to call this service and that its
+# configured Authorization token matches our receiver, without logging secrets.
+try:
+    _webhook_settings_response = iiko_kiosk_post(
+        "/api/1/webhooks/settings",
+        {"organizationId": REPUBLIC_ORGANIZATION_ID},
+        timeout=30,
+    )
+    _webhook_settings = _webhook_settings_response.json() if _webhook_settings_response.ok else {}
+    _expected_webhook_token = str(os.environ.get("IIKO_WEBHOOK_AUTH_TOKEN") or "").strip()
+    _configured_webhook_token = str((_webhook_settings or {}).get("authToken") or "").strip()
+    print(
+        "IIKO_WEBHOOK_CONFIG_CHECK "
+        + json.dumps({
+            "statusCode": _webhook_settings_response.status_code,
+            "webHooksUri": (_webhook_settings or {}).get("webHooksUri"),
+            "authTokenMatches": bool(
+                _expected_webhook_token
+                and _configured_webhook_token
+                and hmac.compare_digest(_expected_webhook_token, _configured_webhook_token)
+            ),
+            "authTokenReturned": bool(_configured_webhook_token),
+            "tableOrderFilter": ((_webhook_settings or {}).get("webHooksFilter") or {}).get("tableOrderFilter"),
+        }, ensure_ascii=False, default=str)[:10000],
+        flush=True,
+    )
+except Exception as _webhook_check_error:
+    print(f"IIKO_WEBHOOK_CONFIG_CHECK_ERROR {_webhook_check_error!r}", flush=True)
+
 
 @app.route("/iiko/webhook", methods=["GET", "POST"])
 def iiko_webhook():
