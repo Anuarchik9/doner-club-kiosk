@@ -2837,6 +2837,13 @@ def _guest_kitchen_stage(order):
     return "unknown", unique
 
 
+print(
+    "IIKO_WEBHOOK_TOKEN_CONFIGURED "
+    + ("yes" if os.environ.get("IIKO_WEBHOOK_AUTH_TOKEN") else "no"),
+    flush=True,
+)
+
+
 @app.route("/iiko/webhook", methods=["GET", "POST"])
 def iiko_webhook():
     if request.method == "GET":
@@ -2846,7 +2853,17 @@ def iiko_webhook():
             configured=bool(os.environ.get("IIKO_WEBHOOK_AUTH_TOKEN")),
         )
 
-    if not _iiko_webhook_authorized():
+    webhook_authorized = _iiko_webhook_authorized()
+    print(
+        "IIKO_WEBHOOK_REQUEST "
+        + json.dumps({
+            "authorized": webhook_authorized,
+            "authorizationHeaderPresent": bool(request.headers.get("Authorization")),
+            "contentType": request.headers.get("Content-Type"),
+        }, ensure_ascii=False),
+        flush=True,
+    )
+    if not webhook_authorized:
         return jsonify(success=False, code="UNAUTHORIZED"), 401
 
     payload = request.get_json(silent=True)
