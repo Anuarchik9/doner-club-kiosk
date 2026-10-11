@@ -57,6 +57,8 @@ SITE_ORIGINS = {
     "https://doner-club-site.onrender.com",
     "https://site.donerclub.kz",
 }
+SITE_ORIGINS.update(origin.strip().rstrip("/") for origin in
+                    os.environ.get("CUSTOMER_SITE_ORIGINS", "").split(",") if origin.strip())
 
 
 @app.after_request
@@ -2846,8 +2848,9 @@ print(
 # Keep iikoCloud pointed at Render's direct service URL. This avoids a custom
 # domain / proxy layer swallowing KDS webhook POSTs before Flask sees them.
 # Preserve iiko's current token and filters verbatim.
-IIKO_WEBHOOK_DIRECT_URI = "https://doner-club-kiosk.onrender.com/iiko/webhook"
-for _webhook_org_id in (REPUBLIC_ORGANIZATION_ID, ARAI_ORGANIZATION_ID):
+IIKO_WEBHOOK_DIRECT_URI = os.environ.get("IIKO_WEBHOOK_DIRECT_URI", "https://doner-club-kiosk.onrender.com/iiko/webhook").strip()
+_webhook_startup_orgs = (REPUBLIC_ORGANIZATION_ID, ARAI_ORGANIZATION_ID) if os.environ.get("IIKO_WEBHOOK_STARTUP_CHECK_ENABLED", "1") == "1" else ()
+for _webhook_org_id in _webhook_startup_orgs:
     try:
         _webhook_settings_response = iiko_kiosk_post(
             "/api/1/webhooks/settings",

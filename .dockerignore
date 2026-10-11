@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+.venv
+.private
+__pycache__
+.test-deps
+tests
+kaspi_bridge
+*.sqlite*
+*.zip
