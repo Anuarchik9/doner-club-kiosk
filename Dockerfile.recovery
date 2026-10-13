@@ -3,7 +3,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=8080
 WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt && useradd --uid 10001 --create-home app
-COPY --chown=app:app app.py availability.py gunicorn.conf.py ./
+COPY --chown=app:app app.py availability.py iiko_reference_cache.py gunicorn.conf.py ./
 COPY --chown=app:app static ./static
 USER app
 EXPOSE 8080

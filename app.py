@@ -10,6 +10,7 @@ import uuid
 import requests
 from flask import Flask, jsonify, request
 from availability import AvailabilityUnavailable, crm_state, needs_catalog, catalog_stop_ids
+from iiko_reference_cache import ReferenceCache, credential_key
 
 app = Flask(__name__)
 
@@ -84,6 +85,7 @@ _departments_cache = {"value": None, "expires_at": 0.0}
 _read_token_lock = threading.Lock()
 _kiosk_token_lock = threading.Lock()
 _departments_lock = threading.Lock()
+_iiko_reference_cache = ReferenceCache()
 
 
 class ConfigurationError(RuntimeError):
@@ -157,6 +159,17 @@ def iiko_post(path, payload, timeout=30, retry_auth=True):
 
 def iiko_kiosk_post(path, payload, timeout=30, retry_auth=True):
     return _post(path, payload, get_iiko_kiosk_token, timeout, retry_auth)
+
+
+def _iiko_reference_post(path, payload, timeout=30):
+    credential = credential_key(
+        IIKO_BASE_URL, os.environ.get("IIKO_KIOSK_API_KEY") or os.environ.get("IIKO_API_KEY"),
+        os.environ.get("IIKO_KIOSK_APP_ID") or os.environ.get("IIKO_APP_ID"),
+        os.environ.get("IIKO_KIOSK_CLIENT_SECRET") or os.environ.get("IIKO_CLIENT_SECRET"),
+    )
+    return _iiko_reference_cache.get(
+        path, payload, credential, lambda: iiko_kiosk_post(path, payload, timeout=timeout),
+    )
 
 
 def get_departments(force_refresh=False):
@@ -536,7 +549,7 @@ def normalize_external_menu(menu_data, organization_id):
 
 
 def get_terminal_groups_for_organization(organization_id):
-    response = iiko_kiosk_post(
+    response = _iiko_reference_post(
         "/api/1/terminal_groups",
         {
             "organizationIds": [organization_id],
@@ -898,7 +911,8 @@ def home():
 
 @app.route("/health")
 def health():
-    return jsonify({"service": "Doner Club Kiosk", "status": "online"})
+    return jsonify({"service": "Doner Club Kiosk", "status": "online",
+                    "iikoReferenceCache": _iiko_reference_cache.diagnostics()})
 
 
 @app.route("/kiosk-menu")
@@ -1578,10 +1592,10 @@ def kiosk_paid_order():
                 "method": "KASPI_SMART_POS",
                 "name": payment_info.get("name"),
                 "paymentTypeId": payment_type_id if payment_sum > 0 else None,
-                "paymentTypeKind": ("LoyaltyCard" if is_loyalty_payment else payment_info.get("paymentTypeKind")) if payment_sum > 0 else None,
-                "paymentMethod": payment_method,
+                "paymentTypeKind": payment_info.get("paymentTypeKind"),
+                "paymentMethod": "KASPI_QR" if payment_status == "QrTransactionSuccess" else "CARD",
                 "sum": payment_sum,
-                "isProcessedExternally": (False if is_loyalty_payment else bool(payment_info.get("isProcessedExternally", True))) if payment_sum > 0 else None,
+                "isProcessedExternally": True,
                 "isFiscalizedExternally": False if payment_sum > 0 else None,
             },
             servicePrintRequested=True,
@@ -1848,7 +1862,7 @@ def _collect_payment_type_rows(value, out):
 
 
 def _call_centre_payment_types(organization_id):
-    response = iiko_kiosk_post(
+    response = _iiko_reference_post(
         "/api/1/payment_types",
         {"organizationIds": [organization_id]},
         timeout=30,
@@ -2083,7 +2097,7 @@ def _call_centre_base_discount_visible(name):
 
 
 def _call_centre_discounts(organization_id):
-    response = iiko_kiosk_post(
+    response = _iiko_reference_post(
         "/api/1/discounts",
         {"organizationIds": [organization_id]},
         timeout=30,
