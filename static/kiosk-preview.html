@@ -1699,7 +1699,18 @@ function renderKaspiTestState(title,message,detail,allowBack){
     }
   }
 }
+var kaspiPaymentStarting=false;
 async function startKaspiPayment(){
+  // Protect the first asynchronous readiness/start request from rapid taps.
+  if(kaspiPaymentStarting)return;
+  kaspiPaymentStarting=true;
+  try{
+    await startKaspiPaymentOnce();
+  }finally{
+    kaspiPaymentStarting=false;
+  }
+}
+async function startKaspiPaymentOnce(){
   if(!ordersAvailable()){closeModal();refreshAvailabilityNotice();return}
 
   try{
